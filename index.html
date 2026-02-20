@@ -393,7 +393,7 @@
       }
     }
     
-    // API Helper functions
+    // API Helper function - all requests use GET to avoid CORS issues
     function apiGet(action, params) {
       var url = API_URL + '?action=' + action;
       if (params) {
@@ -402,14 +402,6 @@
         }
       }
       return fetch(url).then(function(r) { return r.json(); });
-    }
-    
-    function apiPost(data) {
-      return fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      }).then(function(r) { return r.json(); });
     }
     
     document.addEventListener('DOMContentLoaded', function() {
@@ -584,8 +576,7 @@
       
       showMessage('Setting quantity...', 'success');
       
-      apiPost({
-        action: 'setQuantity',
+      apiGet('setQuantity', {
         upc: currentProduct.upc,
         newQty: newQty,
         notes: ''
@@ -625,8 +616,7 @@
       
       showMessage('Saving...', 'success');
       
-      apiPost({
-        action: 'saveForLater',
+      apiGet('saveForLater', {
         upc: currentProduct.upc,
         note: note
       })
@@ -672,8 +662,7 @@
       
       showMessage('Processing...', 'success');
       
-      apiPost({
-        action: 'processTransaction',
+      apiGet('processTransaction', {
         upc: currentProduct.upc,
         type: type,
         qty: transactionQty,
@@ -732,8 +721,7 @@
       
       showMessage('Adding product...', 'success');
       
-      apiPost({
-        action: 'addProduct',
+      apiGet('addProduct', {
         upc: currentProduct.upc,
         name: name,
         pickCategory: pickCategory,
