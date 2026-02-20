@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Basement Inventory</title>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      min-height: 100vh;
+      padding: 10px;
+    }
+    
+    .container { max-width: 500px; margin: 0 auto; }
+    
+    h1 {
+      text-align: center;
+      color: #333;
+      font-size: 1.5rem;
+      margin-bottom: 15px;
+    }
+    
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 15px;
+      margin-bottom: 15px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .scanner-container {
+      width: 100%;
+      max-width: 400px;
+      margin: 0 auto 15px;
+    }
+    
+    #reader { width: 100%; }
+    
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 15px;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-bottom: 10px;
+      transition: transform 0.1s, opacity 0.2s;
+    }
+    
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    
+    .btn-scan { background: #4472C4; color: white; }
+    .btn-in { background: #548235; color: white; }
+    .btn-out { background: #C65911; color: white; }
+    .btn-secondary { background: #e0e0e0; color: #333; }
+    
+    .manual-entry {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    
+    .manual-entry input {
+      flex: 1;
+      padding: 12px;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      font-size: 1rem;
+    }
+    
+    .manual-entry button { width: auto; padding: 12px 20px; margin: 0; }
+    
+    input, select {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      font-size: 1rem;
+      margin-bottom: 10px;
+    }
+    
+    input:focus, select:focus {
+      outline: none;
+      border-color: #4472C4;
+    }
+    
+    label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 5px;
+      color: #555;
+    }
+    
+    .product-info {
+      background: #e8f4e8;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+    }
+    
+    .product-info.new-product { background: #fff3cd; }
+    
+    .product-name { font-size: 1.2rem; font-weight: 600; }
+    .product-upc { color: #666; font-size: 0.9rem; }
+    .product-category { color: #4472C4; font-size: 0.9rem; margin-top: 3px; }
+    .product-qty { font-size: 1.5rem; font-weight: 700; color: #548235; margin-top: 5px; }
+    
+    .qty-buttons {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 15px;
+      margin: 15px 0;
+    }
+    
+    .qty-btn {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      border: none;
+      font-size: 1.5rem;
+      font-weight: bold;
+      cursor: pointer;
+      background: #ddd;
+    }
+    
+    .qty-display {
+      font-size: 2rem;
+      font-weight: 700;
+      min-width: 60px;
+      text-align: center;
+    }
+    
+    .action-buttons { display: flex; gap: 10px; }
+    .action-buttons .btn { flex: 1; }
+    
+    .message {
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+      text-align: center;
+      font-weight: 600;
+    }
+    
+    .message.success { background: #d4edda; color: #155724; }
+    .message.error { background: #f8d7da; color: #721c24; }
+    
+    .hidden { display: none !important; }
+    
+    .loading {
+      text-align: center;
+      padding: 20px;
+      color: #666;
+    }
+    
+    .tabs {
+      display: flex;
+      margin-bottom: 15px;
+    }
+    
+    .tab {
+      flex: 1;
+      padding: 12px;
+      text-align: center;
+      background: #e0e0e0;
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+    
+    .tab:first-child { border-radius: 8px 0 0 8px; }
+    .tab:last-child { border-radius: 0 8px 8px 0; }
+    .tab.active { background: #4472C4; color: white; }
+    
+    .category-badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      background: #e0e0e0;
+      margin-left: 8px;
+    }
+    
+    .location-section {
+      background: #fff3cd;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📦 Basement Inventory</h1>
+    
+    <div id="message" class="message hidden"></div>
+    
+    <div class="tabs">
+      <button class="tab active" onclick="showTab('scan')">Scan</button>
+      <button class="tab" onclick="showTab('list')">Inventory</button>
+    </div>
+    
+    <!-- Scan Tab -->
+    <div id="scanTab">
+      <div class="card">
+        <div class="scanner-container">
+          <div id="reader"></div>
+        </div>
+        
+        <button id="startScanBtn" class="btn btn-scan" onclick="startScanner()">
+          📷 Start Scanner
+        </button>
+        
+        <div class="manual-entry">
+          <input type="text" id="manualUpc" placeholder="Or enter UPC manually" inputmode="numeric">
+          <button class="btn btn-secondary" onclick="manualLookup()">Go</button>
+        </div>
+      </div>
+      
+      <!-- Product Panel (shown after scan) -->
+      <div id="productPanel" class="card hidden">
+        <div id="productInfo" class="product-info">
+          <div class="product-name" id="productName">-</div>
+          <div class="product-upc" id="productUpc">-</div>
+          <div class="product-category" id="productCategory">-</div>
+          <div class="product-qty">Current: <span id="productQty">0</span></div>
+        </div>
+        
+        <label>Quantity to add/remove:</label>
+        <div class="qty-buttons">
+          <button class="qty-btn" onclick="adjustQty(-1)">−</button>
+          <div class="qty-display" id="qtyDisplay">1</div>
+          <button class="qty-btn" onclick="adjustQty(1)">+</button>
+        </div>
+        
+        <div id="locationSection" class="location-section hidden">
+          <label>Location (for OUT):</label>
+          <select id="outLocation">
+            <option value="">Select location...</option>
+          </select>
+        </div>
+        
+        <div class="action-buttons">
+          <button class="btn btn-in" onclick="processIn()">IN</button>
+          <button class="btn btn-out" onclick="showLocationAndProcessOut()">OUT</button>
+        </div>
+        
+        <div id="setQtySection" class="location-section hidden" style="background:#e8f4e8;">
+          <label>Set quantity to:</label>
+          <input type="number" id="setQtyInput" min="0" value="0">
+          <button class="btn btn-in" onclick="confirmSetQty()" style="margin-top:10px;">Confirm</button>
+        </div>
+        
+        <button class="btn btn-secondary" onclick="showSetQty()" style="margin-top:10px;" id="setQtyBtn">
+          Set Qty
+        </button>
+        
+        <button class="btn btn-secondary" onclick="resetScan()" style="margin-top:10px;">
+          Scan Another
+        </button>
+      </div>
+      
+      <!-- New Product Panel -->
+      <div id="newProductPanel" class="card hidden">
+        <div class="product-info new-product">
+          <div class="product-name">New Product</div>
+          <div class="product-upc" id="newProductUpc">-</div>
+          <a id="newProductLookupLink" href="#" target="_blank" style="font-size:0.85rem;">🔍 Look up on go-upc.com</a>
+        </div>
+        
+        <label>Product Name:</label>
+        <input type="text" id="newProductName" placeholder="Enter product name">
+        
+        <label>Pick Category:</label>
+        <select id="newProductPickCategory">
+          <option value="">Select pick category...</option>
+          <option value="Drinks">Drinks (Coke, Monster, Gatorade, Water)</option>
+          <option value="Snacks">Snacks (Chips, Candy, Crackers, Cookies)</option>
+          <option value="Frozen">Frozen (Pizza, Ice Cream, Burritos)</option>
+          <option value="Refrigerated">Refrigerated (Milk, Butter, Eggs)</option>
+          <option value="Groceries">Groceries (Soup, Pasta, Coffee, Condiments)</option>
+          <option value="Household">Household (Cleaning, Medicine, Pet, Personal Care)</option>
+        </select>
+        
+        <label>Tax Category:</label>
+        <select id="newProductTaxCategory">
+          <option value="Food">Food (2% state tax)</option>
+          <option value="Household">Household (4% state tax)</option>
+        </select>
+        
+        <label>Starting Quantity:</label>
+        <input type="number" id="newProductQty" value="1" min="0">
+        
+        <button class="btn btn-in" onclick="addNewProduct()">Add Product</button>
+        
+        <div style="border-top:1px solid #ddd;margin:15px 0;padding-top:15px;">
+          <label>Or save for later research:</label>
+          <input type="text" id="pendingNote" placeholder="Quick note (optional)">
+          <button class="btn btn-secondary" onclick="saveForLater()">Save for Later</button>
+        </div>
+        
+        <button class="btn btn-secondary" onclick="resetScan()">Cancel</button>
+      </div>
+    </div>
+    
+    <!-- Inventory List Tab -->
+    <div id="listTab" class="hidden">
+      <div class="card">
+        <input type="text" id="searchBox" placeholder="Search products..." oninput="filterList()">
+        <select id="filterCategory" onchange="filterList()" style="margin-top:5px;">
+          <option value="">All Categories</option>
+          <option value="Drinks">Drinks</option>
+          <option value="Snacks">Snacks</option>
+          <option value="Frozen">Frozen</option>
+          <option value="Refrigerated">Refrigerated</option>
+          <option value="Groceries">Groceries</option>
+          <option value="Household">Household</option>
+        </select>
+        <div id="inventoryList" class="loading">Loading inventory...</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ============================================
+    // CONFIGURATION - Update this URL after deploying Apps Script
+    // ============================================
+    var API_URL = 'https://script.google.com/macros/s/AKfycbzM3BTk5pgpm09YyXMsHYhHhidoOuJ1v7_HEWJaLpzZFy4kupKDpkcies8EVoKwGvH8kg/exec';
+    
+    var html5QrCode = null;
+    var isScanning = false;
+    var currentProduct = null;
+    var transactionQty = 1;
+    var allProducts = [];
+    var locations = [];
+    var audioContext = null;
+    
+    // Initialize audio context on first user interaction
+    function initAudio() {
+      if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      }
+    }
+    
+    // Success beep - high pitched, short
+    function playSuccessBeep() {
+      initAudio();
+      var oscillator = audioContext.createOscillator();
+      var gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.value = 1500;
+      oscillator.type = 'sine';
+      gainNode.gain.value = 0.3;
+      
+      oscillator.start();
+      oscillator.stop(audioContext.currentTime + 0.15);
+      
+      if (navigator.vibrate) {
+        navigator.vibrate(50);
+      }
+    }
+    
+    // Error buzz - low pitched, harsh
+    function playErrorBuzz() {
+      initAudio();
+      var oscillator = audioContext.createOscillator();
+      var gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.value = 300;
+      oscillator.type = 'square';
+      gainNode.gain.value = 0.3;
+      
+      oscillator.start();
+      oscillator.stop(audioContext.currentTime + 0.3);
+      
+      if (navigator.vibrate) {
+        navigator.vibrate([100, 50, 100]);
+      }
+    }
+    
+    // API Helper functions
+    function apiGet(action, params) {
+      var url = API_URL + '?action=' + action;
+      if (params) {
+        for (var key in params) {
+          url += '&' + key + '=' + encodeURIComponent(params[key]);
+        }
+      }
+      return fetch(url).then(function(r) { return r.json(); });
+    }
+    
+    function apiPost(data) {
+      return fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      }).then(function(r) { return r.json(); });
+    }
+    
+    document.addEventListener('DOMContentLoaded', function() {
+      loadInventory();
+      loadLocations();
+    });
+    
+    function loadLocations() {
+      apiGet('getLocations')
+        .then(function(locs) {
+          locations = locs;
+          var select = document.getElementById('outLocation');
+          select.innerHTML = '<option value="">Select location...</option>';
+          for (var i = 0; i < locs.length; i++) {
+            var opt = document.createElement('option');
+            opt.value = locs[i];
+            opt.textContent = locs[i];
+            select.appendChild(opt);
+          }
+        })
+        .catch(function(err) {
+          console.log('Error loading locations: ' + err);
+        });
+    }
+    
+    function showTab(tab) {
+      document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+      document.querySelector('.tab:nth-child(' + (tab === 'scan' ? 1 : 2) + ')').classList.add('active');
+      
+      document.getElementById('scanTab').classList.toggle('hidden', tab !== 'scan');
+      document.getElementById('listTab').classList.toggle('hidden', tab !== 'list');
+      
+      if (tab === 'list') loadInventory();
+    }
+    
+    function startScanner() {
+      initAudio();
+      
+      if (isScanning) {
+        stopScanner();
+        return;
+      }
+      
+      html5QrCode = new Html5Qrcode("reader");
+      
+      html5QrCode.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 250, height: 150 } },
+        onScanSuccess,
+        onScanFailure
+      ).then(function() {
+        isScanning = true;
+        document.getElementById('startScanBtn').textContent = '⏹ Stop Scanner';
+      }).catch(function(err) {
+        showMessage('Camera error: ' + err, 'error');
+      });
+    }
+    
+    function stopScanner() {
+      if (html5QrCode && isScanning) {
+        html5QrCode.stop().then(function() {
+          isScanning = false;
+          document.getElementById('startScanBtn').textContent = '📷 Start Scanner';
+        });
+      }
+    }
+    
+    function onScanSuccess(decodedText) {
+      stopScanner();
+      lookupUpc(decodedText);
+    }
+    
+    function onScanFailure(error) {}
+    
+    function manualLookup() {
+      initAudio();
+      var upc = document.getElementById('manualUpc').value.trim();
+      if (upc) lookupUpc(upc);
+    }
+    
+    function normalizeUpc(upc) {
+      if (!upc) return '';
+      return String(upc).trim().replace(/^'+/, '').replace(/^0+/, '');
+    }
+    
+    function lookupUpc(upc) {
+      var normalizedInput = normalizeUpc(upc);
+      var found = null;
+      
+      for (var i = 0; i < allProducts.length; i++) {
+        if (normalizeUpc(allProducts[i].upc) === normalizedInput) {
+          found = allProducts[i];
+          break;
+        }
+      }
+      
+      if (found) {
+        playSuccessBeep();
+        showProductPanel({
+          found: true,
+          upc: found.upc,
+          name: found.name,
+          pickCategory: found.pickCategory,
+          taxCategory: found.taxCategory,
+          qty: found.qty
+        });
+      } else {
+        playErrorBuzz();
+        showNewProductPanel(upc);
+      }
+    }
+    
+    function showProductPanel(product) {
+      currentProduct = product;
+      transactionQty = 1;
+      
+      document.getElementById('productName').textContent = product.name;
+      document.getElementById('productUpc').textContent = 'UPC: ' + product.upc;
+      document.getElementById('productCategory').textContent = product.pickCategory;
+      document.getElementById('productQty').textContent = product.qty;
+      document.getElementById('qtyDisplay').textContent = transactionQty;
+      document.getElementById('locationSection').classList.add('hidden');
+      document.getElementById('setQtySection').classList.add('hidden');
+      document.getElementById('outLocation').value = '';
+      
+      document.getElementById('productPanel').classList.remove('hidden');
+      document.getElementById('newProductPanel').classList.add('hidden');
+    }
+    
+    function showNewProductPanel(upc) {
+      currentProduct = { upc: upc };
+      
+      document.getElementById('newProductUpc').textContent = 'UPC: ' + upc;
+      document.getElementById('newProductLookupLink').href = 'https://go-upc.com/search?q=' + upc;
+      document.getElementById('newProductName').value = '';
+      document.getElementById('newProductName').placeholder = 'Looking up...';
+      document.getElementById('newProductPickCategory').value = '';
+      document.getElementById('newProductTaxCategory').value = 'Food';
+      document.getElementById('newProductQty').value = '1';
+      document.getElementById('pendingNote').value = '';
+      
+      document.getElementById('newProductPanel').classList.remove('hidden');
+      document.getElementById('productPanel').classList.add('hidden');
+      
+      // Auto-lookup product name from go-upc.com via API
+      apiGet('lookupUpcName', { upc: upc })
+        .then(function(result) {
+          if (result.found && result.name) {
+            document.getElementById('newProductName').value = result.name;
+            document.getElementById('pendingNote').value = result.name;
+          }
+          document.getElementById('newProductName').placeholder = 'Enter product name';
+        })
+        .catch(function(err) {
+          document.getElementById('newProductName').placeholder = 'Enter product name';
+        });
+    }
+    
+    function adjustQty(delta) {
+      transactionQty = Math.max(1, transactionQty + delta);
+      document.getElementById('qtyDisplay').textContent = transactionQty;
+    }
+    
+    function showSetQty() {
+      document.getElementById('setQtySection').classList.remove('hidden');
+      document.getElementById('setQtyInput').value = currentProduct.qty || 0;
+    }
+    
+    function confirmSetQty() {
+      var newQty = parseInt(document.getElementById('setQtyInput').value) || 0;
+      if (newQty < 0) newQty = 0;
+      
+      showMessage('Setting quantity...', 'success');
+      
+      apiPost({
+        action: 'setQuantity',
+        upc: currentProduct.upc,
+        newQty: newQty,
+        notes: ''
+      })
+        .then(function(result) {
+          if (result.success) {
+            playSuccessBeep();
+            showMessage(
+              'Corrected: ' + result.productName + 
+              ' (' + result.previousQty + ' → ' + result.newQty + ')',
+              'success'
+            );
+            document.getElementById('productQty').textContent = result.newQty;
+            currentProduct.qty = result.newQty;
+            document.getElementById('setQtySection').classList.add('hidden');
+            
+            var normalizedUpc = normalizeUpc(currentProduct.upc);
+            for (var i = 0; i < allProducts.length; i++) {
+              if (normalizeUpc(allProducts[i].upc) === normalizedUpc) {
+                allProducts[i].qty = result.newQty;
+                break;
+              }
+            }
+          } else {
+            playErrorBuzz();
+            showMessage(result.message, 'error');
+          }
+        })
+        .catch(function(err) {
+          playErrorBuzz();
+          showMessage('Error: ' + err.message, 'error');
+        });
+    }
+    
+    function saveForLater() {
+      var note = document.getElementById('pendingNote').value.trim();
+      
+      showMessage('Saving...', 'success');
+      
+      apiPost({
+        action: 'saveForLater',
+        upc: currentProduct.upc,
+        note: note
+      })
+        .then(function(result) {
+          if (result.success) {
+            playSuccessBeep();
+            showMessage('Saved UPC for later', 'success');
+            resetScan();
+          } else {
+            playErrorBuzz();
+            showMessage(result.message, 'error');
+          }
+        })
+        .catch(function(err) {
+          playErrorBuzz();
+          showMessage('Error: ' + err.message, 'error');
+        });
+    }
+    
+    function processIn() {
+      document.getElementById('locationSection').classList.add('hidden');
+      processTransaction('IN', '');
+    }
+    
+    function showLocationAndProcessOut() {
+      var locationSection = document.getElementById('locationSection');
+      
+      if (locationSection.classList.contains('hidden')) {
+        locationSection.classList.remove('hidden');
+        return;
+      }
+      
+      var location = document.getElementById('outLocation').value;
+      if (!location) {
+        showMessage('Please select a location', 'error');
+        return;
+      }
+      processTransaction('OUT', location);
+    }
+    
+    function processTransaction(type, location) {
+      if (!currentProduct) return;
+      
+      showMessage('Processing...', 'success');
+      
+      apiPost({
+        action: 'processTransaction',
+        upc: currentProduct.upc,
+        type: type,
+        qty: transactionQty,
+        location: location,
+        notes: ''
+      })
+        .then(function(result) {
+          if (result.success) {
+            playSuccessBeep();
+            showMessage(
+              type + ': ' + result.productName + 
+              ' (' + result.previousQty + ' → ' + result.newQty + ')' +
+              (location ? ' → ' + location : ''),
+              'success'
+            );
+            document.getElementById('productQty').textContent = result.newQty;
+            currentProduct.qty = result.newQty;
+            transactionQty = 1;
+            document.getElementById('qtyDisplay').textContent = '1';
+            document.getElementById('locationSection').classList.add('hidden');
+            document.getElementById('outLocation').value = '';
+            
+            var normalizedUpc = normalizeUpc(currentProduct.upc);
+            for (var i = 0; i < allProducts.length; i++) {
+              if (normalizeUpc(allProducts[i].upc) === normalizedUpc) {
+                allProducts[i].qty = result.newQty;
+                break;
+              }
+            }
+          } else {
+            playErrorBuzz();
+            showMessage(result.message, 'error');
+          }
+        })
+        .catch(function(err) {
+          playErrorBuzz();
+          showMessage('Error: ' + err.message, 'error');
+        });
+    }
+    
+    function addNewProduct() {
+      var name = document.getElementById('newProductName').value.trim();
+      var pickCategory = document.getElementById('newProductPickCategory').value;
+      var taxCategory = document.getElementById('newProductTaxCategory').value;
+      var qty = parseInt(document.getElementById('newProductQty').value) || 0;
+      
+      if (!name) {
+        showMessage('Please enter a product name', 'error');
+        return;
+      }
+      
+      if (!pickCategory) {
+        showMessage('Please select a pick category', 'error');
+        return;
+      }
+      
+      showMessage('Adding product...', 'success');
+      
+      apiPost({
+        action: 'addProduct',
+        upc: currentProduct.upc,
+        name: name,
+        pickCategory: pickCategory,
+        taxCategory: taxCategory,
+        qty: qty
+      })
+        .then(function(result) {
+          if (result.success) {
+            playSuccessBeep();
+            showMessage('Added: ' + name, 'success');
+            
+            allProducts.push({
+              upc: currentProduct.upc,
+              name: name,
+              pickCategory: pickCategory,
+              taxCategory: taxCategory,
+              qty: qty
+            });
+            
+            lookupUpc(currentProduct.upc);
+          } else {
+            playErrorBuzz();
+            showMessage(result.message, 'error');
+          }
+        })
+        .catch(function(err) {
+          playErrorBuzz();
+          showMessage('Error: ' + err.message, 'error');
+        });
+    }
+    
+    function resetScan() {
+      document.getElementById('productPanel').classList.add('hidden');
+      document.getElementById('newProductPanel').classList.add('hidden');
+      document.getElementById('locationSection').classList.add('hidden');
+      document.getElementById('setQtySection').classList.add('hidden');
+      document.getElementById('manualUpc').value = '';
+      currentProduct = null;
+      hideMessage();
+    }
+    
+    function deduplicateProducts(products) {
+      var groups = {};
+      for (var i = 0; i < products.length; i++) {
+        var p = products[i];
+        var normalized = normalizeUpc(p.upc);
+        if (!groups[normalized]) {
+          groups[normalized] = [];
+        }
+        groups[normalized].push(p);
+      }
+      
+      var result = [];
+      for (var key in groups) {
+        var group = groups[key];
+        if (group.length === 1) {
+          result.push(group[0]);
+        } else {
+          var withLeadingZero = null;
+          for (var j = 0; j < group.length; j++) {
+            if (group[j].upc.charAt(0) === '0') {
+              withLeadingZero = group[j];
+              break;
+            }
+          }
+          result.push(withLeadingZero || group[0]);
+        }
+      }
+      
+      result.sort(function(a, b) {
+        return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+      });
+      
+      return result;
+    }
+    
+    function loadInventory() {
+      apiGet('getProducts')
+        .then(function(products) {
+          allProducts = deduplicateProducts(products);
+          renderList(allProducts);
+        })
+        .catch(function(err) {
+          document.getElementById('inventoryList').innerHTML = 
+            '<div style="color:red">Error loading inventory</div>';
+        });
+    }
+    
+    function renderList(products) {
+      var container = document.getElementById('inventoryList');
+      
+      if (products.length === 0) {
+        container.innerHTML = '<div style="text-align:center;color:#666">No products found</div>';
+        return;
+      }
+      
+      var html = '<div style="margin-top:10px">';
+      for (var i = 0; i < products.length; i++) {
+        var p = products[i];
+        html += '<div onclick="selectProductFromList(\'' + p.upc.replace(/'/g, "\\'") + '\')" style="padding:12px 0;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;cursor:pointer">' +
+          '<div>' +
+            '<div style="font-weight:600">' + p.name + '</div>' +
+            '<div style="font-size:0.85rem;color:#666">' + p.upc + ' <span class="category-badge">' + p.pickCategory + '</span></div>' +
+          '</div>' +
+          '<div style="font-size:1.2rem;font-weight:700;color:#548235">' + p.qty + '</div>' +
+        '</div>';
+      }
+      html += '</div>';
+      container.innerHTML = html;
+    }
+    
+    function selectProductFromList(upc) {
+      initAudio();
+      showTab('scan');
+      lookupUpc(upc);
+    }
+    
+    function filterList() {
+      var search = document.getElementById('searchBox').value.toLowerCase();
+      var category = document.getElementById('filterCategory').value;
+      
+      var filtered = [];
+      for (var i = 0; i < allProducts.length; i++) {
+        var p = allProducts[i];
+        var matchesSearch = p.name.toLowerCase().indexOf(search) >= 0 || p.upc.indexOf(search) >= 0;
+        var matchesCategory = !category || p.pickCategory === category;
+        if (matchesSearch && matchesCategory) {
+          filtered.push(p);
+        }
+      }
+      renderList(filtered);
+    }
+    
+    function showMessage(text, type) {
+      var el = document.getElementById('message');
+      el.textContent = text;
+      el.className = 'message ' + type;
+      el.classList.remove('hidden');
+    }
+    
+    function hideMessage() {
+      document.getElementById('message').classList.add('hidden');
+    }
+  </script>
+</body>
+</html>
