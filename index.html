@@ -6,6 +6,7 @@
   <title>Basement Inventory v2</title>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script src="session.js"></script>
+  <script src="upc.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     
@@ -598,7 +599,10 @@
       
       html5QrCode.start(
         { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 250, height: 150 } },
+        {
+          fps: 10,
+          qrbox: { width: 300, height: 120 }
+        },
         onScanSuccess,
         onScanFailure
       ).then(function() {
@@ -632,8 +636,7 @@
     }
     
     function normalizeUpc(upc) {
-      if (!upc) return '';
-      return String(upc).trim().replace(/^'+/, '').replace(/^0+/, '');
+      return UpcUtils.normalizeUpc(upc);
     }
     
     function lookupUpc(upc) {
