@@ -3,8 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Basement Inventory</title>
+  <title>Basement Inventory v2</title>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="session.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     
@@ -60,6 +61,66 @@
     .btn-in { background: #548235; color: white; }
     .btn-out { background: #C65911; color: white; }
     .btn-secondary { background: #e0e0e0; color: #333; }
+
+    /* ---- Session Panel ---- */
+    .session-idle {
+      border: 2px dashed #ccc;
+      border-radius: 12px;
+      padding: 15px;
+      margin-bottom: 15px;
+      background: white;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+
+    .session-idle label {
+      font-size: 0.85rem;
+      color: #888;
+      margin-bottom: 8px;
+    }
+
+    .session-active {
+      border-radius: 12px;
+      padding: 15px;
+      margin-bottom: 15px;
+      background: #d4edda;
+      border: 2px solid #548235;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .session-active-label {
+      font-size: 0.8rem;
+      color: #155724;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .session-active-location {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #155724;
+    }
+
+    .session-active .btn-end {
+      white-space: nowrap;
+      flex-shrink: 0;
+      display: inline-block;
+      width: auto;
+      padding: 8px 14px;
+      margin: 0;
+      background: #c3e6cb;
+      color: #155724;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    /* ---- end Session Panel ---- */
     
     .manual-entry {
       display: flex;
@@ -200,7 +261,7 @@
 </head>
 <body>
   <div class="container">
-    <h1>📦 Basement Inventory</h1>
+    <h1>📦 Basement Inventory v2</h1>
     
     <div id="message" class="message hidden"></div>
     
@@ -211,6 +272,10 @@
     
     <!-- Scan Tab -->
     <div id="scanTab">
+
+      <!-- Session Panel — rendered by renderSessionPanel() -->
+      <div id="sessionPanel"></div>
+
       <div class="card">
         <div class="scanner-container">
           <div id="reader"></div>
@@ -242,6 +307,7 @@
           <button class="qty-btn" onclick="adjustQty(1)">+</button>
         </div>
         
+        <!-- Location picker: only shown for OUT when no session is active -->
         <div id="locationSection" class="location-section hidden">
           <label>Location (for OUT):</label>
           <select id="outLocation">
@@ -334,7 +400,7 @@
     // ============================================
     // CONFIGURATION - Update this URL after deploying Apps Script
     // ============================================
-    var API_URL = 'https://script.google.com/macros/s/AKfycbzM3BTk5pgpm09YyXMsHYhHhidoOuJ1v7_HEWJaLpzZFy4kupKDpkcies8EVoKwGvH8kg/exec';
+    var API_URL = 'https://script.google.com/macros/s/AKfycbyvezOXPtgMvo0WiS2FeJkeKXOzazf3BXoDF0pfLa1pbrrEXeLqLedTtg0m6_cYlFIOmA/exec';
     
     var html5QrCode = null;
     var isScanning = false;
@@ -407,20 +473,103 @@
     document.addEventListener('DOMContentLoaded', function() {
       loadInventory();
       loadLocations();
+      renderSessionPanel();
     });
+
+    // ============================================
+    // SESSION MANAGEMENT
+    // ============================================
+
+    /**
+     * Render the session panel based on current SessionManager state.
+     * Called on init and after any session start/end.
+     */
+    function renderSessionPanel() {
+      var panel = document.getElementById('sessionPanel');
+
+      if (SessionManager.isActive()) {
+        var location = SessionManager.getLocation();
+        panel.innerHTML =
+          '<div class="session-active">' +
+            '<div>' +
+              '<div class="session-active-label">✓ Checkout Session Active</div>' +
+              '<div class="session-active-location">📍 ' + location + '</div>' +
+            '</div>' +
+            '<button class="btn-end" onclick="endSession()">End Session</button>' +
+          '</div>';
+      } else {
+        panel.innerHTML =
+          '<div class="session-idle">' +
+            '<label>Start a checkout session</label>' +
+            '<select id="sessionLocation">' +
+              '<option value="">Select destination location...</option>' +
+            '</select>' +
+            '<button class="btn btn-out" onclick="startSession()" style="margin-bottom:0">Start Session</button>' +
+          '</div>';
+        // Populate the session location dropdown from the already-loaded locations array
+        populateSessionDropdown();
+      }
+    }
+
+    /** Populate #sessionLocation from the locations array (called after locations load). */
+    function populateSessionDropdown() {
+      var select = document.getElementById('sessionLocation');
+      if (!select) return; // panel may be in active state, no dropdown present
+      select.innerHTML = '<option value="">Select destination location...</option>';
+      for (var i = 0; i < locations.length; i++) {
+        var opt = document.createElement('option');
+        opt.value = locations[i];
+        opt.textContent = locations[i];
+        select.appendChild(opt);
+      }
+    }
+
+    function startSession() {
+      var select = document.getElementById('sessionLocation');
+      var location = select ? select.value : '';
+      if (!location) {
+        showMessage('Select a location to start a session', 'error');
+        return;
+      }
+      try {
+        SessionManager.start(location);
+        renderSessionPanel();
+        showMessage('Session started: ' + location, 'success');
+      } catch (err) {
+        showMessage('Could not start session: ' + err.message, 'error');
+      }
+    }
+
+    function endSession() {
+      var location = SessionManager.getLocation();
+      SessionManager.end();
+      renderSessionPanel();
+      // Reset any open product panel so location picker state is clean
+      resetScan();
+      showMessage('Session ended: ' + location, 'success');
+    }
+
+    // ============================================
+    // LOCATIONS
+    // ============================================
     
     function loadLocations() {
       apiGet('getLocations')
         .then(function(locs) {
           locations = locs;
-          var select = document.getElementById('outLocation');
-          select.innerHTML = '<option value="">Select location...</option>';
+
+          // Populate the OUT dropdown (used when no session is active)
+          var outSelect = document.getElementById('outLocation');
+          outSelect.innerHTML = '<option value="">Select location...</option>';
           for (var i = 0; i < locs.length; i++) {
             var opt = document.createElement('option');
             opt.value = locs[i];
             opt.textContent = locs[i];
-            select.appendChild(opt);
+            outSelect.appendChild(opt);
           }
+
+          // Populate the session dropdown if it's currently visible
+          populateSessionDropdown();
         })
         .catch(function(err) {
           console.log('Error loading locations: ' + err);
@@ -484,11 +633,7 @@
     
     function normalizeUpc(upc) {
       if (!upc) return '';
-      return String(upc)
-        .replace(/\u00A0/g, '')   // non-breaking space
-        .replace(/\s/g, '')       // all whitespace
-        .replace(/^'+/, '')       // leading apostrophes
-        .replace(/^0+/, '');      // leading zeros
+      return String(upc).trim().replace(/^'+/, '').replace(/^0+/, '');
     }
     
     function lookupUpc(upc) {
@@ -646,6 +791,13 @@
     }
     
     function showLocationAndProcessOut() {
+      // ---- Session path: skip location picker entirely ----
+      if (SessionManager.isActive()) {
+        processTransaction('OUT', SessionManager.getLocation());
+        return;
+      }
+
+      // ---- No session: existing two-tap flow ----
       var locationSection = document.getElementById('locationSection');
       
       if (locationSection.classList.contains('hidden')) {
@@ -765,15 +917,14 @@
       document.getElementById('manualUpc').value = '';
       currentProduct = null;
       hideMessage();
+      // Session state is intentionally preserved — resetScan() scopes to the current item only
     }
     
     function deduplicateProducts(products) {
-      
       var groups = {};
       for (var i = 0; i < products.length; i++) {
         var p = products[i];
         var normalized = normalizeUpc(p.upc);
-
         if (!groups[normalized]) {
           groups[normalized] = [];
         }
