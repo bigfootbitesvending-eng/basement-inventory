@@ -768,28 +768,16 @@
     }
     
     function deduplicateProducts(products) {
-      console.log('--- Deduplication Start ---');
-      console.log('Total products received:', products.length);
       
       var groups = {};
       for (var i = 0; i < products.length; i++) {
         var p = products[i];
         var normalized = normalizeUpc(p.upc);
-        console.log('UPC:', p.upc, '→ Normalized:', normalized, '| Name:', p.name);
+
         if (!groups[normalized]) {
           groups[normalized] = [];
         }
         groups[normalized].push(p);
-      }
-      
-      console.log('--- Groups with duplicates ---');
-      for (var key in groups) {
-        if (groups[key].length > 1) {
-          console.log('Key:', key, 'Count:', groups[key].length);
-          for (var x = 0; x < groups[key].length; x++) {
-            console.log('  -', groups[key][x].upc, '|', groups[key][x].name);
-          }
-        }
       }
       
       var result = [];
@@ -812,9 +800,6 @@
       result.sort(function(a, b) {
         return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
       });
-      
-      console.log('Final count after dedup:', result.length);
-      console.log('--- Deduplication End ---');
       
       return result;
     }
