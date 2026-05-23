@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Basement Inventory v2.0.1</title>
+  <title>Basement Inventory v2.0.2</title>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script src="session.js"></script>
   <style>
@@ -261,10 +261,14 @@
 </head>
 <body>
   <div class="container">
-    <h1>📦 Basement Inventory v2.0.1</h1>
-    
+    <h1>📦 Basement Inventory v2.0.2</h1>
+
+    <!-- Session-level messages (start/end session, camera errors) -->
     <div id="message" class="message hidden"></div>
-    
+
+    <!-- Session Panel — always visible, above tabs -->
+    <div id="sessionPanel"></div>
+
     <div class="tabs">
       <button class="tab active" onclick="showTab('scan')">Scan</button>
       <button class="tab" onclick="showTab('list')">Inventory</button>
@@ -272,9 +276,6 @@
     
     <!-- Scan Tab -->
     <div id="scanTab">
-
-      <!-- Session Panel — rendered by renderSessionPanel() -->
-      <div id="sessionPanel"></div>
 
       <div class="card">
         <div class="scanner-container">
@@ -293,6 +294,10 @@
       
       <!-- Product Panel (shown after scan) -->
       <div id="productPanel" class="card hidden">
+
+        <!-- Transaction-level messages live here -->
+        <div id="productMessage" class="message hidden"></div>
+
         <div id="productInfo" class="product-info">
           <div class="product-name" id="productName">-</div>
           <div class="product-upc" id="productUpc">-</div>
@@ -410,56 +415,40 @@
     var locations = [];
     var audioContext = null;
     
-    // Initialize audio context on first user interaction
     function initAudio() {
       if (!audioContext) {
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
       }
     }
     
-    // Success beep - high pitched, short
     function playSuccessBeep() {
       initAudio();
       var oscillator = audioContext.createOscillator();
       var gainNode = audioContext.createGain();
-      
       oscillator.connect(gainNode);
       gainNode.connect(audioContext.destination);
-      
       oscillator.frequency.value = 1500;
       oscillator.type = 'sine';
       gainNode.gain.value = 0.3;
-      
       oscillator.start();
       oscillator.stop(audioContext.currentTime + 0.15);
-      
-      if (navigator.vibrate) {
-        navigator.vibrate(50);
-      }
+      if (navigator.vibrate) navigator.vibrate(50);
     }
     
-    // Error buzz - low pitched, harsh
     function playErrorBuzz() {
       initAudio();
       var oscillator = audioContext.createOscillator();
       var gainNode = audioContext.createGain();
-      
       oscillator.connect(gainNode);
       gainNode.connect(audioContext.destination);
-      
       oscillator.frequency.value = 300;
       oscillator.type = 'square';
       gainNode.gain.value = 0.3;
-      
       oscillator.start();
       oscillator.stop(audioContext.currentTime + 0.3);
-      
-      if (navigator.vibrate) {
-        navigator.vibrate([100, 50, 100]);
-      }
+      if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
     }
     
-    // API Helper function - all requests use GET to avoid CORS issues
     function apiGet(action, params) {
       var url = API_URL + '?action=' + action;
       if (params) {
@@ -550,7 +539,6 @@
       apiGet('getLocations')
         .then(function(locs) {
           locations = locs;
-
           var outSelect = document.getElementById('outLocation');
           outSelect.innerHTML = '<option value="">Select location...</option>';
           for (var i = 0; i < locs.length; i++) {
@@ -559,7 +547,6 @@
             opt.textContent = locs[i];
             outSelect.appendChild(opt);
           }
-
           populateSessionDropdown();
         })
         .catch(function(err) {
@@ -570,23 +557,18 @@
     function showTab(tab) {
       document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
       document.querySelector('.tab:nth-child(' + (tab === 'scan' ? 1 : 2) + ')').classList.add('active');
-      
       document.getElementById('scanTab').classList.toggle('hidden', tab !== 'scan');
       document.getElementById('listTab').classList.toggle('hidden', tab !== 'list');
-      
       if (tab === 'list') loadInventory();
     }
     
     function startScanner() {
       initAudio();
-      
       if (isScanning) {
         stopScanner();
         return;
       }
-      
       html5QrCode = new Html5Qrcode("reader");
-      
       html5QrCode.start(
         { facingMode: "environment" },
         { fps: 10, qrbox: { width: 250, height: 150 } },
@@ -630,14 +612,12 @@
     function lookupUpc(upc) {
       var normalizedInput = normalizeUpc(upc);
       var found = null;
-      
       for (var i = 0; i < allProducts.length; i++) {
         if (normalizeUpc(allProducts[i].upc) === normalizedInput) {
           found = allProducts[i];
           break;
         }
       }
-      
       if (found) {
         playSuccessBeep();
         showProductPanel({
@@ -657,7 +637,6 @@
     function showProductPanel(product) {
       currentProduct = product;
       transactionQty = 1;
-      
       document.getElementById('productName').textContent = product.name;
       document.getElementById('productUpc').textContent = 'UPC: ' + product.upc;
       document.getElementById('productCategory').textContent = product.pickCategory;
@@ -666,14 +645,13 @@
       document.getElementById('locationSection').classList.add('hidden');
       document.getElementById('setQtySection').classList.add('hidden');
       document.getElementById('outLocation').value = '';
-      
+      hideProductMessage();
       document.getElementById('productPanel').classList.remove('hidden');
       document.getElementById('newProductPanel').classList.add('hidden');
     }
     
     function showNewProductPanel(upc) {
       currentProduct = { upc: upc };
-      
       document.getElementById('newProductUpc').textContent = 'UPC: ' + upc;
       document.getElementById('newProductLookupLink').href = 'https://go-upc.com/search?q=' + upc;
       document.getElementById('newProductName').value = '';
@@ -682,10 +660,8 @@
       document.getElementById('newProductTaxCategory').value = 'Food';
       document.getElementById('newProductQty').value = '1';
       document.getElementById('pendingNote').value = '';
-      
       document.getElementById('newProductPanel').classList.remove('hidden');
       document.getElementById('productPanel').classList.add('hidden');
-      
       apiGet('lookupUpcName', { upc: upc })
         .then(function(result) {
           if (result.found && result.name) {
@@ -712,9 +688,7 @@
     function confirmSetQty() {
       var newQty = parseInt(document.getElementById('setQtyInput').value) || 0;
       if (newQty < 0) newQty = 0;
-      
-      showMessage('Setting quantity...', 'success');
-      
+      showProductMessage('Setting quantity...', 'success');
       apiGet('setQuantity', {
         upc: currentProduct.upc,
         newQty: newQty,
@@ -723,15 +697,14 @@
         .then(function(result) {
           if (result.success) {
             playSuccessBeep();
-            showMessage(
-              'Corrected: ' + result.productName + 
+            showProductMessage(
+              'Corrected: ' + result.productName +
               ' (' + result.previousQty + ' → ' + result.newQty + ')',
               'success'
             );
             document.getElementById('productQty').textContent = result.newQty;
             currentProduct.qty = result.newQty;
             document.getElementById('setQtySection').classList.add('hidden');
-            
             var normalizedUpc = normalizeUpc(currentProduct.upc);
             for (var i = 0; i < allProducts.length; i++) {
               if (normalizeUpc(allProducts[i].upc) === normalizedUpc) {
@@ -741,20 +714,18 @@
             }
           } else {
             playErrorBuzz();
-            showMessage(result.message, 'error');
+            showProductMessage(result.message, 'error');
           }
         })
         .catch(function(err) {
           playErrorBuzz();
-          showMessage('Error: ' + err.message, 'error');
+          showProductMessage('Error: ' + err.message, 'error');
         });
     }
     
     function saveForLater() {
       var note = document.getElementById('pendingNote').value.trim();
-      
       showMessage('Saving...', 'success');
-      
       apiGet('saveForLater', {
         upc: currentProduct.upc,
         note: note
@@ -785,17 +756,14 @@
         processTransaction('OUT', SessionManager.getLocation());
         return;
       }
-
       var locationSection = document.getElementById('locationSection');
-      
       if (locationSection.classList.contains('hidden')) {
         locationSection.classList.remove('hidden');
         return;
       }
-      
       var location = document.getElementById('outLocation').value;
       if (!location) {
-        showMessage('Please select a location', 'error');
+        showProductMessage('Please select a location', 'error');
         return;
       }
       processTransaction('OUT', location);
@@ -803,9 +771,7 @@
     
     function processTransaction(type, location) {
       if (!currentProduct) return;
-      
-      showMessage('Processing...', 'success');
-      
+      showProductMessage('Processing...', 'success');
       apiGet('processTransaction', {
         upc: currentProduct.upc,
         type: type,
@@ -816,8 +782,8 @@
         .then(function(result) {
           if (result.success) {
             playSuccessBeep();
-            showMessage(
-              type + ': ' + result.productName + 
+            showProductMessage(
+              type + ': ' + result.productName +
               ' (' + result.previousQty + ' → ' + result.newQty + ')' +
               (location ? ' → ' + location : ''),
               'success'
@@ -828,7 +794,6 @@
             document.getElementById('qtyDisplay').textContent = '1';
             document.getElementById('locationSection').classList.add('hidden');
             document.getElementById('outLocation').value = '';
-            
             var normalizedUpc = normalizeUpc(currentProduct.upc);
             for (var i = 0; i < allProducts.length; i++) {
               if (normalizeUpc(allProducts[i].upc) === normalizedUpc) {
@@ -838,12 +803,12 @@
             }
           } else {
             playErrorBuzz();
-            showMessage(result.message, 'error');
+            showProductMessage(result.message, 'error');
           }
         })
         .catch(function(err) {
           playErrorBuzz();
-          showMessage('Error: ' + err.message, 'error');
+          showProductMessage('Error: ' + err.message, 'error');
         });
     }
     
@@ -852,19 +817,15 @@
       var pickCategory = document.getElementById('newProductPickCategory').value;
       var taxCategory = document.getElementById('newProductTaxCategory').value;
       var qty = parseInt(document.getElementById('newProductQty').value) || 0;
-      
       if (!name) {
         showMessage('Please enter a product name', 'error');
         return;
       }
-      
       if (!pickCategory) {
         showMessage('Please select a pick category', 'error');
         return;
       }
-      
       showMessage('Adding product...', 'success');
-      
       apiGet('addProduct', {
         upc: currentProduct.upc,
         name: name,
@@ -876,7 +837,6 @@
           if (result.success) {
             playSuccessBeep();
             showMessage('Added: ' + name, 'success');
-            
             allProducts.push({
               upc: currentProduct.upc,
               name: name,
@@ -884,7 +844,6 @@
               taxCategory: taxCategory,
               qty: qty
             });
-            
             lookupUpc(currentProduct.upc);
           } else {
             playErrorBuzz();
@@ -905,6 +864,7 @@
       document.getElementById('manualUpc').value = '';
       currentProduct = null;
       hideMessage();
+      hideProductMessage();
     }
     
     function deduplicateProducts(products) {
@@ -912,12 +872,9 @@
       for (var i = 0; i < products.length; i++) {
         var p = products[i];
         var normalized = normalizeUpc(p.upc);
-        if (!groups[normalized]) {
-          groups[normalized] = [];
-        }
+        if (!groups[normalized]) groups[normalized] = [];
         groups[normalized].push(p);
       }
-      
       var result = [];
       for (var key in groups) {
         var group = groups[key];
@@ -934,11 +891,9 @@
           result.push(withLeadingZero || group[0]);
         }
       }
-      
       result.sort(function(a, b) {
         return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
       });
-      
       return result;
     }
     
@@ -949,19 +904,17 @@
           renderList(allProducts);
         })
         .catch(function(err) {
-          document.getElementById('inventoryList').innerHTML = 
+          document.getElementById('inventoryList').innerHTML =
             '<div style="color:red">Error loading inventory</div>';
         });
     }
     
     function renderList(products) {
       var container = document.getElementById('inventoryList');
-      
       if (products.length === 0) {
         container.innerHTML = '<div style="text-align:center;color:#666">No products found</div>';
         return;
       }
-      
       var html = '<div style="margin-top:10px">';
       for (var i = 0; i < products.length; i++) {
         var p = products[i];
@@ -986,29 +939,39 @@
     function filterList() {
       var search = document.getElementById('searchBox').value.toLowerCase();
       var category = document.getElementById('filterCategory').value;
-      
       var filtered = [];
       for (var i = 0; i < allProducts.length; i++) {
         var p = allProducts[i];
         var matchesSearch = p.name.toLowerCase().indexOf(search) >= 0 || p.upc.indexOf(search) >= 0;
         var matchesCategory = !category || p.pickCategory === category;
-        if (matchesSearch && matchesCategory) {
-          filtered.push(p);
-        }
+        if (matchesSearch && matchesCategory) filtered.push(p);
       }
       renderList(filtered);
     }
-    
+
+    // Top bar — session events, camera errors, new product flow
     function showMessage(text, type) {
       var el = document.getElementById('message');
       el.textContent = text;
       el.className = 'message ' + type;
       el.classList.remove('hidden');
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
     
     function hideMessage() {
       document.getElementById('message').classList.add('hidden');
+    }
+
+    // Product panel bar — transaction feedback
+    function showProductMessage(text, type) {
+      var el = document.getElementById('productMessage');
+      el.textContent = text;
+      el.className = 'message ' + type;
+      el.classList.remove('hidden');
+    }
+
+    function hideProductMessage() {
+      var el = document.getElementById('productMessage');
+      if (el) el.classList.add('hidden');
     }
   </script>
 </body>
