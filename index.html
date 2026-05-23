@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Basement Inventory v2</title>
+  <title>Basement Inventory v2.0.1</title>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script src="session.js"></script>
   <style>
@@ -261,7 +261,7 @@
 </head>
 <body>
   <div class="container">
-    <h1>📦 Basement Inventory v2</h1>
+    <h1>📦 Basement Inventory v2.0.1</h1>
     
     <div id="message" class="message hidden"></div>
     
@@ -480,10 +480,6 @@
     // SESSION MANAGEMENT
     // ============================================
 
-    /**
-     * Render the session panel based on current SessionManager state.
-     * Called on init and after any session start/end.
-     */
     function renderSessionPanel() {
       var panel = document.getElementById('sessionPanel');
 
@@ -506,15 +502,13 @@
             '</select>' +
             '<button class="btn btn-out" onclick="startSession()" style="margin-bottom:0">Start Session</button>' +
           '</div>';
-        // Populate the session location dropdown from the already-loaded locations array
         populateSessionDropdown();
       }
     }
 
-    /** Populate #sessionLocation from the locations array (called after locations load). */
     function populateSessionDropdown() {
       var select = document.getElementById('sessionLocation');
-      if (!select) return; // panel may be in active state, no dropdown present
+      if (!select) return;
       select.innerHTML = '<option value="">Select destination location...</option>';
       for (var i = 0; i < locations.length; i++) {
         var opt = document.createElement('option');
@@ -544,7 +538,6 @@
       var location = SessionManager.getLocation();
       SessionManager.end();
       renderSessionPanel();
-      // Reset any open product panel so location picker state is clean
       resetScan();
       showMessage('Session ended: ' + location, 'success');
     }
@@ -558,7 +551,6 @@
         .then(function(locs) {
           locations = locs;
 
-          // Populate the OUT dropdown (used when no session is active)
           var outSelect = document.getElementById('outLocation');
           outSelect.innerHTML = '<option value="">Select location...</option>';
           for (var i = 0; i < locs.length; i++) {
@@ -568,7 +560,6 @@
             outSelect.appendChild(opt);
           }
 
-          // Populate the session dropdown if it's currently visible
           populateSessionDropdown();
         })
         .catch(function(err) {
@@ -695,7 +686,6 @@
       document.getElementById('newProductPanel').classList.remove('hidden');
       document.getElementById('productPanel').classList.add('hidden');
       
-      // Auto-lookup product name from go-upc.com via API
       apiGet('lookupUpcName', { upc: upc })
         .then(function(result) {
           if (result.found && result.name) {
@@ -791,13 +781,11 @@
     }
     
     function showLocationAndProcessOut() {
-      // ---- Session path: skip location picker entirely ----
       if (SessionManager.isActive()) {
         processTransaction('OUT', SessionManager.getLocation());
         return;
       }
 
-      // ---- No session: existing two-tap flow ----
       var locationSection = document.getElementById('locationSection');
       
       if (locationSection.classList.contains('hidden')) {
@@ -917,7 +905,6 @@
       document.getElementById('manualUpc').value = '';
       currentProduct = null;
       hideMessage();
-      // Session state is intentionally preserved — resetScan() scopes to the current item only
     }
     
     function deduplicateProducts(products) {
@@ -1017,6 +1004,7 @@
       el.textContent = text;
       el.className = 'message ' + type;
       el.classList.remove('hidden');
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
     
     function hideMessage() {
