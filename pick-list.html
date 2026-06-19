@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Pick List</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      min-height: 100vh;
+      padding: 10px;
+    }
+
+    .container { max-width: 500px; margin: 0 auto; }
+
+    .header { text-align: center; margin-bottom: 15px; }
+    .header h1 { font-size: 1.3rem; color: #333; margin-bottom: 4px; }
+    .header .meta { font-size: 0.9rem; color: #666; }
+
+    .category-header {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #4472C4;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      margin: 18px 0 8px;
+      padding-bottom: 4px;
+      border-bottom: 2px solid #4472C4;
+    }
+
+    .item-row {
+      background: white;
+      border-radius: 10px;
+      margin-bottom: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      overflow: hidden;
+    }
+
+    .item-collapsed {
+      padding: 12px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+    }
+
+    .item-collapsed.stockout { background: #fff3f3; }
+    .item-info { flex: 1; }
+    .item-name { font-weight: 600; font-size: 0.95rem; color: #333; }
+    .item-name.stockout { color: #C0392B; }
+    .item-sub { font-size: 0.82rem; color: #777; margin-top: 2px; }
+    .item-check { font-size: 1.3rem; color: #548235; margin-left: 10px; flex-shrink: 0; }
+
+    .item-expanded { padding: 14px; border-top: 1px solid #eee; background: #fafafa; }
+
+    .stepper {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      margin-bottom: 12px;
+    }
+
+    .stepper-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: none;
+      font-size: 1.4rem;
+      font-weight: bold;
+      cursor: pointer;
+      background: #ddd;
+    }
+
+    .stepper-qty { font-size: 1.8rem; font-weight: 700; min-width: 50px; text-align: center; }
+
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-bottom: 8px;
+    }
+
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-pick { background: #548235; color: white; }
+    .btn-unpick { background: #C65911; color: white; }
+
+    .picked-label {
+      text-align: center;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #155724;
+      margin-bottom: 10px;
+    }
+
+    .loading, .empty-state { text-align: center; padding: 30px; color: #666; }
+
+    .error-banner {
+      background: #f8d7da;
+      color: #721c24;
+      padding: 14px;
+      border-radius: 8px;
+      text-align: center;
+      margin-bottom: 15px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header" id="header"></div>
+    <div id="content" class="loading">Loading pick list...</div>
+  </div>
+
+  <script>
+    var READ_URL = 'https://randysmith42.app.n8n.cloud/webhook/pick-list';
+    var WRITE_URL = 'https://randysmith42.app.n8n.cloud/webhook/pick-list/pick';
+    var INVENTORY_API_URL = 'https://script.google.com/macros/s/AKfycbyvezOXPtgMvo0WiS2FeJkeKXOzazf3BXoDF0pfLa1pbrrEXeLqLedTtg0m6_cYlFIOmA/exec';
+
+    var params = new URLSearchParams(window.location.search);
+    var locationParam = params.get('location');
+    var dateParam = params.get('date');
+    var modeParam = params.get('mode');
+
+    var items = [];
+    var onHandMap = {};
+    var itemState = {};
+
+    function normalizeUpc(upc) {
+      if (!upc) return '';
+      return String(upc).trim().replace(/^'+/, '').replace(/^0+/, '');
+    }
+
+    function capitalize(s) {
+      if (!s) return '';
+      return s.charAt(0).toUpperCase() + s.slice(1);
+    }
+
+    function init() {
+      if (!locationParam || !dateParam || !modeParam) {
+        document.getElementById('content').innerHTML =
+          '<div class="error-banner">Missing required parameters. This page needs location, date, and mode in the URL.</div>';
+        return;
+      }
+
+      document.getElementById('header').innerHTML =
+        '<h1>📋 ' + capitalize(locationParam) + ' Pick List</h1>' +
+        '<div class="meta">' + dateParam + ' — ' + (modeParam === 'light' ? 'Light Stock' : 'Full Stock') + '</div>';
+
+      Promise.all([loadPickList(), loadInventory()])
+        .then(function() { render(); })
+        .catch(function(err) {
+          document.getElementById('content').innerHTML =
+            '<div class="error-banner">Error loading pick list: ' + err.message + '</div>';
+        });
+    }
+
+    function loadPickList() {
+      var url = READ_URL + '?location=' + encodeURIComponent(locationParam) +
+        '&date=' + encodeURIComponent(dateParam) +
+        '&mode=' + encodeURIComponent(modeParam);
+      return fetch(url)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          var payload = Array.isArray(data) ? data[0] : data;
+          items = payload.items || [];
+          items.forEach(function(item) {
+            itemState[item.upc] = { expanded: false, touched: false, qty: 0 };
+          });
+        });
+    }
+
+    function loadInventory() {
+      var url = INVENTORY_API_URL + '?action=getProducts';
+      return fetch(url)
+        .then(function(r) { return r.json(); })
+        .then(function(products) {
+          onHandMap = {};
+          products.forEach(function(p) {
+            onHandMap[normalizeUpc(p.upc)] = p.qty;
+          });
+        });
+    }
+
+    function getOnHand(upc) {
+      var qty = onHandMap[normalizeUpc(upc)];
+      return (qty === undefined || qty === null) ? '—' : qty;
+    }
+
+    function findItem(upc) {
+      for (var i = 0; i < items.length; i++) {
+        if (items[i].upc === upc) return items[i];
+      }
+      return null;
+    }
+
+    function render() {
+      var container = document.getElementById('content');
+
+      if (items.length === 0) {
+        container.innerHTML = '<div class="empty-state">No items for this location and date.</div>';
+        return;
+      }
+
+      var byCategory = {};
+      items.forEach(function(item) {
+        var cat = item.pick_category || 'Other';
+        if (!byCategory[cat]) byCategory[cat] = [];
+        byCategory[cat].push(item);
+      });
+
+      var categories = Object.keys(byCategory).sort();
+      categories.forEach(function(cat) {
+        byCategory[cat].sort(function(a, b) { return a.product_name.localeCompare(b.product_name); });
+      });
+
+      var html = '';
+      categories.forEach(function(cat) {
+        html += '<div class="category-header">' + cat + '</div>';
+        byCategory[cat].forEach(function(item) { html += renderItem(item); });
+      });
+
+      container.innerHTML = html;
+    }
+
+    function renderItem(item) {
+      var state = itemState[item.upc];
+      var isPicked = item.picked === true;
+      var onHand = getOnHand(item.upc);
+      var stockoutClass = item.is_stockout ? ' stockout' : '';
+
+      var collapsedHtml =
+        '<div class="item-collapsed' + stockoutClass + '" onclick="toggleExpand(\'' + item.upc + '\')">' +
+          '<div class="item-info">' +
+            '<div class="item-name' + stockoutClass + '">' + item.product_name + '</div>' +
+            '<div class="item-sub">Bring: ' + item.bring_qty + ' &nbsp;|&nbsp; On hand: ' + onHand + '</div>' +
+          '</div>' +
+          (isPicked ? '<div class="item-check">✓</div>' : '') +
+        '</div>';
+
+      var expandedHtml = '';
+      if (state.expanded) {
+        if (isPicked) {
+          expandedHtml =
+            '<div class="item-expanded">' +
+              '<div class="picked-label">Picked — ' + item.qty_picked + '</div>' +
+              '<button class="btn btn-unpick" onclick="handleUnpick(\'' + item.upc + '\')">Unpick</button>' +
+            '</div>';
+        } else {
+          expandedHtml =
+            '<div class="item-expanded">' +
+              '<div class="stepper">' +
+                '<button class="stepper-btn" onclick="adjustStepper(\'' + item.upc + '\', -1)">−</button>' +
+                '<div class="stepper-qty" id="stepperQty-' + item.upc + '">' + state.qty + '</div>' +
+                '<button class="stepper-btn" onclick="adjustStepper(\'' + item.upc + '\', 1)">+</button>' +
+              '</div>' +
+              '<button class="btn btn-pick" id="pickBtn-' + item.upc + '" ' +
+                (state.touched ? '' : 'disabled') +
+                ' onclick="handlePick(\'' + item.upc + '\')">Pick</button>' +
+            '</div>';
+        }
+      }
+
+      return '<div class="item-row">' + collapsedHtml + expandedHtml + '</div>';
+    }
+
+    function toggleExpand(upc) {
+      var item = findItem(upc);
+      if (item.picked) {
+        if (window.confirm('Undo pick?')) submitPick(upc, 'unpick', 0);
+        return;
+      }
+      itemState[upc].expanded = !itemState[upc].expanded;
+      render();
+    }
+
+    function adjustStepper(upc, delta) {
+      var state = itemState[upc];
+      state.touched = true;
+      state.qty = Math.max(0, state.qty + delta);
+      document.getElementById('stepperQty-' + upc).textContent = state.qty;
+      var btn = document.getElementById('pickBtn-' + upc);
+      if (btn) btn.disabled = false;
+    }
+
+    function handlePick(upc) {
+      var item = findItem(upc);
+      var state = itemState[upc];
+
+      if (state.qty === 0 && item.is_stockout) {
+        if (!window.confirm('This item is stocked out — pick nothing?')) return;
+      }
+
+      submitPick(upc, 'pick', state.qty);
+    }
+
+    function handleUnpick(upc) {
+      if (window.confirm('Undo pick?')) submitPick(upc, 'unpick', 0);
+    }
+
+    function submitPick(upc, action, qty) {
+      var body = { location: locationParam, date: dateParam, upc: upc, action: action };
+      if (action === 'pick') body.qty_picked = qty;
+
+      fetch(WRITE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+        .then(function(r) { return r.json(); })
+        .then(function(result) {
+          if (result.status === 'ok') {
+            var item = findItem(upc);
+            item.picked = result.picked;
+            item.qty_picked = result.qty_picked;
+            itemState[upc].touched = false;
+            itemState[upc].qty = 0;
+            itemState[upc].expanded = (action === 'unpick');
+            render();
+          } else {
+            alert('Error: ' + (result.error || 'unknown error'));
+          }
+        })
+        .catch(function(err) { alert('Network error: ' + err.message); });
+    }
+
+    init();
+  </script>
+</body>
+</html>
