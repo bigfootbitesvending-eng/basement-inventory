@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+  <!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
@@ -194,9 +194,12 @@
         '&date=' + encodeURIComponent(dateParam) +
         '&mode=' + encodeURIComponent(modeParam);
       return fetch(url)
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-          var payload = Array.isArray(data) ? data[0] : data;
+        .then(function(r) { return r.json().then(function(body) { return { ok: r.ok, body: body }; }); })
+        .then(function(result) {
+          if (!result.ok) {
+            throw new Error(result.body.error || 'Request failed');
+          }
+          var payload = Array.isArray(result.body) ? result.body[0] : result.body;
           items = payload.items || [];
           items.forEach(function(item) {
             itemState[item.upc] = { expanded: false, touched: false, qty: 0 };
@@ -250,12 +253,6 @@
       var categories = Object.keys(byCategory).sort();
       categories.forEach(function(cat) {
         byCategory[cat].sort(function(a, b) { return a.product_name.localeCompare(b.product_name); });
-      });
-
-      var html = '';
-      categories.forEach(function(cat) {
-        html += '<div class="category-header">' + cat + ' — ' + byCategory[cat].length + '</div>';
-        byCategory[cat].forEach(function(item) { html += renderItem(item); });
       });
 
       var html = '';
