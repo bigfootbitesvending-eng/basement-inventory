@@ -36,6 +36,12 @@
       border-bottom: 2px solid #4472C4;
     }
 
+    .item-count {
+      font-size: 0.85rem;
+      color: #888;
+      margin-top: 4px;
+    }
+    
     .item-row {
       background: white;
       border-radius: 10px;
@@ -98,6 +104,19 @@
     .btn-pick { background: #548235; color: white; }
     .btn-unpick { background: #C65911; color: white; }
 
+    .review-row {
+      background: white;
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      font-weight: 600;
+    }
+    
+    .review-actions { display: flex; gap: 10px; margin-top: 15px; }
+    .review-actions .btn { flex: 1; }
+    
     .picked-label {
       text-align: center;
       font-size: 0.95rem;
@@ -123,10 +142,13 @@
     <div class="header" id="header"></div>
     <div id="content" class="loading">Loading pick list...</div>
   </div>
+  <button class="btn" id="endSessionBtn" onclick="openReviewScreen()"
+    style="background:#888;color:white;margin-top:5px;display:none;">End Session</button>
 
   <script>
     var READ_URL = 'https://randysmith42.app.n8n.cloud/webhook/pick-list';
     var WRITE_URL = 'https://randysmith42.app.n8n.cloud/webhook/pick-list/pick';
+    var FINALIZE_URL = 'https://randysmith42.app.n8n.cloud/webhook/pick-list/finalize';
     var INVENTORY_API_URL = 'https://script.google.com/macros/s/AKfycbyvezOXPtgMvo0WiS2FeJkeKXOzazf3BXoDF0pfLa1pbrrEXeLqLedTtg0m6_cYlFIOmA/exec';
 
     var params = new URLSearchParams(window.location.search);
@@ -208,7 +230,10 @@
 
     function render() {
       var container = document.getElementById('content');
-
+      var total = items.length;
+      var countEl = document.getElementById('itemCountLine');
+      if (countEl) countEl.textContent = total + (total === 1 ? ' item' : ' items') + ' total';
+      
       if (items.length === 0) {
         container.innerHTML = '<div class="empty-state">No items for this location and date.</div>';
         return;
@@ -228,11 +253,14 @@
 
       var html = '';
       categories.forEach(function(cat) {
-        html += '<div class="category-header">' + cat + '</div>';
+        html += '<div class="category-header">' + cat + ' — ' + byCategory[cat].length + '</div>';
         byCategory[cat].forEach(function(item) { html += renderItem(item); });
       });
 
       container.innerHTML = html;
+      document.getElementById('endSessionBtn').style.display = 'none';
+      container.innerHTML = '<div class="empty-state">No items for this location and date.</div>';
+    return;
     }
 
     function renderItem(item) {
@@ -335,6 +363,49 @@
         })
         .catch(function(err) { alert('Network error: ' + err.message); });
     }
+
+    function openReviewScreen() {
+  var unpickedByCategory = {};
+  items.forEach(function(item) {
+    if (!item.picked) {
+      var cat = item.pick_category || 'Other';
+      unpickedByCategory[cat] = (unpickedByCategory[cat] || 0) + 1;
+    }
+  });
+
+  var categories = Object.keys(unpickedByCategory).sort();
+  var rowsHtml = categories.length === 0
+    ? '<p style="text-align:center;color:#548235;font-weight:600;">All items picked!</p>'
+    : categories.map(function(cat) {
+        return '<div class="review-row"><span>' + cat + '</span><span>' + unpickedByCategory[cat] + ' unpicked</span></div>';
+      }).join('');
+
+  document.getElementById('content').innerHTML =
+    '<h2 style="margin-bottom:12px;">Review</h2>' + rowsHtml +
+    '<div class="review-actions">' +
+      '<button class="btn" style="background:#888;color:white;" onclick="render()">Go Back</button>' +
+      '<button class="btn btn-pick" onclick="finalizeSession()">Done</button>' +
+    '</div>';
+  document.getElementById('endSessionBtn').style.display = 'none';
+}
+
+function finalizeSession() {
+  document.getElementById('content').innerHTML = '<div class="loading">Sending shopping list...</div>';
+  fetch(FINALIZE_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ location: locationParam, date: dateParam })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function() {
+      document.getElementById('content').innerHTML =
+        '<div class="empty-state">Session closed. Shopping list sent.</div>';
+      })
+    .catch(function(err) {
+      document.getElementById('content').innerHTML =
+        '<div class="error-banner">Error sending shopping list: ' + err.message + '</div>';
+      });
+  }
 
     init();
   </script>
