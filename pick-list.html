@@ -349,7 +349,6 @@
       })
         .then(function(r) { return r.json(); })
         .then(function(result) {
-          console.log('Raw write response:', JSON.stringify(result));
           if (result.status === 'ok') {
             var item = findItem(upc);
             item.picked = result.picked;
@@ -357,7 +356,6 @@
             itemState[upc].touched = false;
             itemState[upc].qty = 0;
             itemState[upc].expanded = (action === 'unpick');
-            console.log('Picked update:', item.upc, item.picked, item.qty_picked);
             render();
           } else {
             alert('Error: ' + (result.error || 'unknown error'));
