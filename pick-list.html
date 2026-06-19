@@ -35,12 +35,6 @@
       padding-bottom: 4px;
       border-bottom: 2px solid #4472C4;
     }
-
-    .item-count {
-      font-size: 0.85rem;
-      color: #888;
-      margin-top: 4px;
-    }
     
     .item-row {
       background: white;
@@ -179,7 +173,7 @@
 
       document.getElementById('header').innerHTML =
         '<h1>📋 ' + capitalize(locationParam) + ' Pick List</h1>' +
-        '<div class="meta">' + dateParam + ' — ' + (modeParam === 'light' ? 'Light Stock' : 'Full Stock') + '</div>';
+        '<div class="meta" id="metaLine">' + dateParam + ' — ' + (modeParam === 'light' ? 'Light Stock' : 'Full Stock') + '</div>';
 
       Promise.all([loadPickList(), loadInventory()])
         .then(function() { render(); })
@@ -234,12 +228,16 @@
     function render() {
       var container = document.getElementById('content');
       var total = items.length;
-      var countEl = document.getElementById('itemCountLine');
-      if (countEl) countEl.textContent = total + (total === 1 ? ' item' : ' items') + ' total';
+      var metaEl = document.getElementById('metaLine');
+      if (metaEl) {
+        metaEl.textContent = dateParam + ' — ' + (modeParam === 'light' ? 'Light Stock' : 'Full Stock') + ' — ' + total + (total === 1 ? ' Item' : ' Items');
+      }
       
       if (items.length === 0) {
-        document.getElementById('endSessionBtn').style.display = 'none';
-        container.innerHTML = '<div class="empty-state">No items for this location and date.</div>';
+        var metaEl = document.getElementById('metaLine');
+        if (metaEl) metaEl.textContent = dateParam + ' — ' + (modeParam === 'light' ? 'Light Stock' : 'Full Stock') + ' — 0 Items';
+          document.getElementById('endSessionBtn').style.display = 'none';
+          container.innerHTML = '<div class="empty-state">No items for this location and date.</div>';
         return;
       }
 
