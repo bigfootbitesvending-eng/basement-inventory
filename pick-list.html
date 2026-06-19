@@ -235,6 +235,7 @@
       if (countEl) countEl.textContent = total + (total === 1 ? ' item' : ' items') + ' total';
       
       if (items.length === 0) {
+        document.getElementById('endSessionBtn').style.display = 'none';
         container.innerHTML = '<div class="empty-state">No items for this location and date.</div>';
         return;
       }
@@ -257,10 +258,14 @@
         byCategory[cat].forEach(function(item) { html += renderItem(item); });
       });
 
+      var html = '';
+      categories.forEach(function(cat) {
+        html += '<div class="category-header">' + cat + ' — ' + byCategory[cat].length + '</div>';
+        byCategory[cat].forEach(function(item) { html += renderItem(item); });
+      });
+
       container.innerHTML = html;
-      document.getElementById('endSessionBtn').style.display = 'none';
-      container.innerHTML = '<div class="empty-state">No items for this location and date.</div>';
-    return;
+      document.getElementById('endSessionBtn').style.display = 'block';
     }
 
     function renderItem(item) {
