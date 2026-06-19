@@ -349,6 +349,7 @@
       })
         .then(function(r) { return r.json(); })
         .then(function(result) {
+          console.log('Raw write response:', JSON.stringify(result));
           if (result.status === 'ok') {
             var item = findItem(upc);
             item.picked = result.picked;
