@@ -365,28 +365,42 @@
     }
 
     function openReviewScreen() {
-  var unpickedByCategory = {};
-  items.forEach(function(item) {
-    if (!item.picked) {
-      var cat = item.pick_category || 'Other';
-      unpickedByCategory[cat] = (unpickedByCategory[cat] || 0) + 1;
-    }
-  });
+      var unpickedByCategory = {};
+      items.forEach(function(item) {
+        if (!item.picked) { 
+          var cat = item.pick_category || 'Other';
+          if (!unpickedByCategory[cat]) unpickedByCategory[cat] = [];
+          unpickedByCategory[cat].push(item);
+        }
+      });
 
-  var categories = Object.keys(unpickedByCategory).sort();
-  var rowsHtml = categories.length === 0
-    ? '<p style="text-align:center;color:#548235;font-weight:600;">All items picked!</p>'
-    : categories.map(function(cat) {
-        return '<div class="review-row"><span>' + cat + '</span><span>' + unpickedByCategory[cat] + ' unpicked</span></div>';
-      }).join('');
+      var categories = Object.keys(unpickedByCategory).sort();
+      categories.forEach(function(cat) {
+        unpickedByCategory[cat].sort(function(a, b) { return a.product_name.localeCompare(b.product_name); });
+      });
 
-  document.getElementById('content').innerHTML =
-    '<h2 style="margin-bottom:12px;">Review</h2>' + rowsHtml +
-    '<div class="review-actions">' +
-      '<button class="btn" style="background:#888;color:white;" onclick="render()">Go Back</button>' +
-      '<button class="btn btn-pick" onclick="finalizeSession()">Done</button>' +
-    '</div>';
-  document.getElementById('endSessionBtn').style.display = 'none';
+      var rowsHtml = categories.length === 0
+        ? '<p style="text-align:center;color:#548235;font-weight:600;">All items picked!</p>'
+      : categories.map(function(cat) {
+          var itemList = unpickedByCategory[cat].map(function(item) {
+            var stockoutTag = item.is_stockout ? ' <span style="color:#C0392B;font-weight:700;">STOCKOUT</span>' : '';
+            return '<div style="padding:6px 0 6px 14px;font-size:0.88rem;font-weight:400;color:#555;border-top:1px solid #eee;">' +
+              item.product_name + stockoutTag + '</div>';
+          }).join('');
+          return '<div class="review-row" style="flex-direction:column;align-items:stretch;">' +
+            '<div style="display:flex;justify-content:space-between;">' +
+              '<span>' + cat + '</span><span>' + unpickedByCategory[cat].length + ' unpicked</span>' +
+            '</div>' + itemList +
+          '</div>';
+        }).join('');
+
+    document.getElementById('content').innerHTML =
+      '<h2 style="margin-bottom:12px;">Review</h2>' + rowsHtml +
+      '<div class="review-actions">' +
+        '<button class="btn" style="background:#888;color:white;" onclick="render()">Go Back</button>' +
+        '<button class="btn btn-pick" onclick="finalizeSession()">Done</button>' +
+      '</div>';
+    document.getElementById('endSessionBtn').style.display = 'none';
 }
 
 function finalizeSession() {
