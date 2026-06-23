@@ -408,7 +408,7 @@ function finalizeSession() {
   fetch(FINALIZE_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ location: locationParam, date: dateParam })
+    body: JSON.stringify({ location: locationParam, date: dateParam, mode: modeParam })
     })
     .then(function(r) { return r.json(); })
     .then(function() {
