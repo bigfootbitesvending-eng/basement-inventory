@@ -266,14 +266,16 @@
     function renderItem(item) {
       var state = itemState[item.upc];
       var isPicked = item.picked === true;
+      var isSkipped = item.skipped === true;
       var onHand = getOnHand(item.upc);
       var stockoutClass = item.is_stockout ? ' stockout' : '';
+      var skippedStyle = isSkipped ? ' style="opacity:0.5;"' : '';
 
       var collapsedHtml =
-        '<div class="item-collapsed' + stockoutClass + '" onclick="toggleExpand(\'' + item.upc + '\')">' +
+        '<div class="item-collapsed' + stockoutClass + '"' + skippedStyle + ' onclick="toggleExpand(\'' + item.upc + '\')">' +
           '<div class="item-info">' +
             '<div class="item-name' + stockoutClass + '">' + item.product_name + '</div>' +
-            '<div class="item-sub">Bring: ' + item.bring_qty + ' &nbsp;|&nbsp; On hand: ' + onHand + '</div>' +
+            '<div class="item-sub">Bring: ' + item.bring_qty + ' &nbsp;|&nbsp; On hand: ' + onHand + (isSkipped ? ' &nbsp;|&nbsp; SKIPPED' : '') + '</div>' +
           '</div>' +
           (isPicked ? '<div class="item-check">✓</div>' : '') +
         '</div>';
@@ -286,6 +288,12 @@
               '<div class="picked-label">Picked — ' + item.qty_picked + '</div>' +
               '<button class="btn btn-unpick" onclick="handleUnpick(\'' + item.upc + '\')">Unpick</button>' +
             '</div>';
+        } else if (isSkipped) {
+          expandedHtml =
+            '<div class="item-expanded">' +
+              '<div class="picked-label" style="color:#888;">Skipped</div>' +
+              '<button class="btn btn-unpick" onclick="handleUnskip(\'' + item.upc + '\')">Unskip</button>' +
+            '</div>';
         } else {
           expandedHtml =
             '<div class="item-expanded">' +
@@ -297,6 +305,7 @@
               '<button class="btn btn-pick" id="pickBtn-' + item.upc + '" ' +
                 (state.touched ? '' : 'disabled') +
                 ' onclick="handlePick(\'' + item.upc + '\')">Pick</button>' +
+              '<button class="btn" style="background:#888;color:white;" onclick="handleSkip(\'' + item.upc + '\')">Skip</button>' +
             '</div>';
         }
       }
@@ -308,6 +317,10 @@
       var item = findItem(upc);
       if (item.picked) {
         if (window.confirm('Undo pick?')) submitPick(upc, 'unpick', 0);
+        return;
+      }
+      if (item.skipped) {
+        if (window.confirm('Unskip?')) submitPick(upc, 'unskip', 0);
         return;
       }
       itemState[upc].expanded = !itemState[upc].expanded;
@@ -338,6 +351,14 @@
       if (window.confirm('Undo pick?')) submitPick(upc, 'unpick', 0);
     }
 
+    function handleSkip(upc) {
+      submitPick(upc, 'skip', 0);
+    }
+
+    function handleUnskip(upc) {
+      submitPick(upc, 'unskip', 0);
+    }
+
     function submitPick(upc, action, qty) {
       var body = { location: locationParam, date: dateParam, upc: upc, action: action };
       if (action === 'pick') body.qty_picked = qty;
@@ -353,9 +374,10 @@
             var item = findItem(upc);
             item.picked = result.picked;
             item.qty_picked = result.qty_picked;
+            item.skipped = result.skipped;
             itemState[upc].touched = false;
             itemState[upc].qty = 0;
-            itemState[upc].expanded = (action === 'unpick');
+            itemState[upc].expanded = (action === 'unpick' || action === 'unskip');
             render();
           } else {
             alert('Error: ' + (result.error || 'unknown error'));
