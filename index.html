@@ -460,9 +460,16 @@
     }
     
     document.addEventListener('DOMContentLoaded', function() {
-      loadInventory();
       loadLocations();
       renderSessionPanel();
+    
+      var deepLinkUpc = getUpcFromUrl();
+      loadInventory().then(function() {
+        if (deepLinkUpc) {
+          showTab('scan');
+          lookupUpc(deepLinkUpc);
+        }
+      });
     });
 
     // ============================================
@@ -898,7 +905,7 @@
     }
     
     function loadInventory() {
-      apiGet('getProducts')
+      return apiGet('getProducts')
         .then(function(products) {
           allProducts = deduplicateProducts(products);
           renderList(allProducts);
@@ -934,6 +941,11 @@
       initAudio();
       showTab('scan');
       lookupUpc(upc);
+    }
+
+    function getUpcFromUrl() {
+      var params = new URLSearchParams(window.location.search);
+      return params.get('upc');
     }
     
     function filterList() {
