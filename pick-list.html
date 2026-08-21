@@ -222,7 +222,6 @@
       }
       
       if (items.length === 0) {
-        var metaEl = document.getElementById('metaLine');
         if (metaEl) metaEl.textContent = dateParam + ' — ' + (modeParam === 'light' ? 'Light Stock' : 'Full Stock') + ' — 0 Items';
           document.getElementById('endSessionBtn').style.display = 'none';
           container.innerHTML = '<div class="empty-state">No items for this location and date.</div>';
@@ -420,8 +419,11 @@ function finalizeSession() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ location: locationParam, date: dateParam, mode: modeParam })
     })
-    .then(function(r) { return r.json(); })
-    .then(function() {
+    .then(function(r) { return r.json().then(function(body) { return { ok: r.ok, body: body }; }); })
+    .then(function(result) {
+      if (!result.ok) {
+        throw new Error(result.body.error || result.body.message || 'Finalize failed');
+      }
       document.getElementById('content').innerHTML =
         '<div class="empty-state">Session closed. Shopping list sent.</div>';
       })
