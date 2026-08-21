@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Basement Inventory v2.0.3</title>
+  <title>Basement Inventory v3.0.0</title>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script src="session.js"></script>
   <style>
@@ -261,7 +261,7 @@
 </head>
 <body>
   <div class="container">
-    <h1>📦 Basement Inventory v2.0.3</h1>
+    <h1>📦 Basement Inventory v3.0.0</h1>
 
     <!-- Session-level messages (start/end session, camera errors) -->
     <div id="message" class="message hidden"></div>
@@ -403,10 +403,10 @@
 
   <script>
     // ============================================
-    // CONFIGURATION - Update this URL after deploying Apps Script
+    // CONFIGURATION — n8n webhook base (Neon-backed, replaces Apps Script)
     // ============================================
-    var API_URL = 'https://script.google.com/macros/s/AKfycbyvezOXPtgMvo0WiS2FeJkeKXOzazf3BXoDF0pfLa1pbrrEXeLqLedTtg0m6_cYlFIOmA/exec';
-    
+    var API_BASE = 'https://randysmith42.app.n8n.cloud/webhook';
+
     var html5QrCode = null;
     var isScanning = false;
     var currentProduct = null;
@@ -414,6 +414,67 @@
     var allProducts = [];
     var locations = [];
     var audioContext = null;
+
+    // ============================================
+    // API HELPERS
+    // Both helpers resolve with { ok, status, body } instead of rejecting on
+    // non-2xx — several endpoints use status codes meaningfully (404 = UPC
+    // not found, 409 = duplicate UPC, 400 = validation error), and callers
+    // need to branch on that rather than have it surface as a fetch error.
+    // ============================================
+
+    function apiGetJson(path, params) {
+      var url = API_BASE + path;
+      if (params) {
+        var qs = [];
+        for (var key in params) {
+          qs.push(key + '=' + encodeURIComponent(params[key]));
+        }
+        if (qs.length) url += '?' + qs.join('&');
+      }
+      return fetch(url).then(function(r) {
+        return r.json().then(function(body) {
+          return { ok: r.ok, status: r.status, body: body };
+        });
+      });
+    }
+
+    function apiPostJson(path, payload) {
+      var url = API_BASE + path;
+      return fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).then(function(r) {
+        return r.json().then(function(body) {
+          return { ok: r.ok, status: r.status, body: body };
+        });
+      });
+    }
+
+    // Maps a basement_inventory row (snake_case, from Get Product / List
+    // Products) into the shape the rest of this file already expects.
+    // Keeping the rename localized to one place instead of touching every
+    // call site that reads .name / .pickCategory / .taxCategory.
+    function mapProduct(p) {
+      return {
+        upc: p.upc,
+        name: p.product_name,
+        pickCategory: p.pick_category,
+        taxCategory: p.tax_category,
+        qty: p.qty
+      };
+    }
+
+    // Pulls a usable message out of any of the error response shapes the
+    // API returns: {error: "..."} (not found / duplicate) or
+    // {errors: [...]} (validation).
+    function errorMessage(body, fallback) {
+      if (!body) return fallback;
+      if (body.error) return body.error;
+      if (body.errors && body.errors.length) return body.errors.join(', ');
+      return fallback;
+    }
     
     function initAudio() {
       if (!audioContext) {
@@ -449,27 +510,19 @@
       if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
     }
     
-    function apiGet(action, params) {
-      var url = API_URL + '?action=' + action;
-      if (params) {
-        for (var key in params) {
-          url += '&' + key + '=' + encodeURIComponent(params[key]);
-        }
-      }
-      return fetch(url).then(function(r) { return r.json(); });
-    }
-    
     document.addEventListener('DOMContentLoaded', function() {
       loadLocations();
       renderSessionPanel();
-    
+      loadInventory();
+
+      // lookupUpc no longer depends on allProducts being loaded first (it's
+      // a live call now), so the deep-link flow doesn't need to wait on
+      // loadInventory the way it used to.
       var deepLinkUpc = getUpcFromUrl();
-      loadInventory().then(function() {
-        if (deepLinkUpc) {
-          showTab('scan');
-          lookupUpc(deepLinkUpc);
-        }
-      });
+      if (deepLinkUpc) {
+        showTab('scan');
+        lookupUpc(deepLinkUpc);
+      }
     });
 
     // ============================================
@@ -543,15 +596,15 @@
     // ============================================
     
     function loadLocations() {
-      apiGet('getLocations')
-        .then(function(locs) {
-          locations = locs;
+      apiGetJson('/inventory/locations')
+        .then(function(res) {
+          locations = res.body.locations || [];
           var outSelect = document.getElementById('outLocation');
           outSelect.innerHTML = '<option value="">Select location...</option>';
-          for (var i = 0; i < locs.length; i++) {
+          for (var i = 0; i < locations.length; i++) {
             var opt = document.createElement('option');
-            opt.value = locs[i];
-            opt.textContent = locs[i];
+            opt.value = locations[i];
+            opt.textContent = locations[i];
             outSelect.appendChild(opt);
           }
           populateSessionDropdown();
@@ -616,29 +669,33 @@
       return String(upc).trim().replace(/^'+/, '').replace(/^0+/, '');
     }
     
+    // Live per-scan lookup against Get Product (was: match against a
+    // client-side cache loaded once at startup). This is what makes the
+    // 404-driven new-product flow work, and it means on-hand qty is always
+    // current instead of whatever was cached at page load.
     function lookupUpc(upc) {
-      var normalizedInput = normalizeUpc(upc);
-      var found = null;
-      for (var i = 0; i < allProducts.length; i++) {
-        if (normalizeUpc(allProducts[i].upc) === normalizedInput) {
-          found = allProducts[i];
-          break;
-        }
-      }
-      if (found) {
-        playSuccessBeep();
-        showProductPanel({
-          found: true,
-          upc: found.upc,
-          name: found.name,
-          pickCategory: found.pickCategory,
-          taxCategory: found.taxCategory,
-          qty: found.qty
+      showMessage('Looking up...', 'success');
+      apiGetJson('/inventory/product', { upc: upc })
+        .then(function(res) {
+          hideMessage();
+          if (res.status === 404) {
+            playErrorBuzz();
+            showNewProductPanel(upc);
+            return;
+          }
+          if (!res.ok) {
+            playErrorBuzz();
+            showMessage(errorMessage(res.body, 'Lookup failed (' + res.status + ')'), 'error');
+            return;
+          }
+          playSuccessBeep();
+          showProductPanel(mapProduct(res.body));
+        })
+        .catch(function(err) {
+          hideMessage();
+          playErrorBuzz();
+          showMessage('Error: ' + err.message, 'error');
         });
-      } else {
-        playErrorBuzz();
-        showNewProductPanel(upc);
-      }
     }
     
     function showProductPanel(product) {
@@ -669,9 +726,10 @@
       document.getElementById('pendingNote').value = '';
       document.getElementById('newProductPanel').classList.remove('hidden');
       document.getElementById('productPanel').classList.add('hidden');
-      apiGet('lookupUpcName', { upc: upc })
-        .then(function(result) {
-          if (result.found && result.name) {
+      apiGetJson('/inventory/lookup-upc-name', { upc: upc })
+        .then(function(res) {
+          var result = res.body;
+          if (result && result.found && result.name) {
             document.getElementById('newProductName').value = result.name;
             document.getElementById('pendingNote').value = result.name;
           }
@@ -696,60 +754,38 @@
       var newQty = parseInt(document.getElementById('setQtyInput').value) || 0;
       if (newQty < 0) newQty = 0;
       showProductMessage('Setting quantity...', 'success');
-      apiGet('setQuantity', {
+      apiPostJson('/inventory/set-quantity', {
         upc: currentProduct.upc,
-        newQty: newQty,
+        new_qty: newQty,
         notes: ''
       })
-        .then(function(result) {
+        .then(function(res) {
+          var result = res.body;
           if (result.success) {
             playSuccessBeep();
             showProductMessage(
-              'Corrected: ' + result.productName +
-              ' (' + result.previousQty + ' → ' + result.newQty + ')',
+              'Corrected: ' + result.product_name +
+              ' (' + result.previous_qty + ' → ' + result.new_qty + ')',
               'success'
             );
-            document.getElementById('productQty').textContent = result.newQty;
-            currentProduct.qty = result.newQty;
+            document.getElementById('productQty').textContent = result.new_qty;
+            currentProduct.qty = result.new_qty;
             document.getElementById('setQtySection').classList.add('hidden');
             var normalizedUpc = normalizeUpc(currentProduct.upc);
             for (var i = 0; i < allProducts.length; i++) {
               if (normalizeUpc(allProducts[i].upc) === normalizedUpc) {
-                allProducts[i].qty = result.newQty;
+                allProducts[i].qty = result.new_qty;
                 break;
               }
             }
           } else {
             playErrorBuzz();
-            showProductMessage(result.message, 'error');
+            showProductMessage(errorMessage(result, 'Could not set quantity'), 'error');
           }
         })
         .catch(function(err) {
           playErrorBuzz();
           showProductMessage('Error: ' + err.message, 'error');
-        });
-    }
-    
-    function saveForLater() {
-      var note = document.getElementById('pendingNote').value.trim();
-      showMessage('Saving...', 'success');
-      apiGet('saveForLater', {
-        upc: currentProduct.upc,
-        note: note
-      })
-        .then(function(result) {
-          if (result.success) {
-            playSuccessBeep();
-            showMessage('Saved UPC for later', 'success');
-            resetScan();
-          } else {
-            playErrorBuzz();
-            showMessage(result.message, 'error');
-          }
-        })
-        .catch(function(err) {
-          playErrorBuzz();
-          showMessage('Error: ' + err.message, 'error');
         });
     }
     
@@ -779,24 +815,25 @@
     function processTransaction(type, location) {
       if (!currentProduct) return;
       showProductMessage('Processing...', 'success');
-      apiGet('processTransaction', {
+      apiPostJson('/inventory/transaction', {
         upc: currentProduct.upc,
         type: type,
         qty: transactionQty,
         location: location,
         notes: ''
       })
-        .then(function(result) {
+        .then(function(res) {
+          var result = res.body;
           if (result.success) {
             playSuccessBeep();
             showProductMessage(
-              type + ': ' + result.productName +
-              ' (' + result.previousQty + ' → ' + result.newQty + ')' +
+              type + ': ' + result.product_name +
+              ' (' + result.previous_qty + ' → ' + result.new_qty + ')' +
               (location ? ' → ' + location : ''),
               'success'
             );
-            document.getElementById('productQty').textContent = result.newQty;
-            currentProduct.qty = result.newQty;
+            document.getElementById('productQty').textContent = result.new_qty;
+            currentProduct.qty = result.new_qty;
             transactionQty = 1;
             document.getElementById('qtyDisplay').textContent = '1';
             document.getElementById('locationSection').classList.add('hidden');
@@ -804,13 +841,13 @@
             var normalizedUpc = normalizeUpc(currentProduct.upc);
             for (var i = 0; i < allProducts.length; i++) {
               if (normalizeUpc(allProducts[i].upc) === normalizedUpc) {
-                allProducts[i].qty = result.newQty;
+                allProducts[i].qty = result.new_qty;
                 break;
               }
             }
           } else {
             playErrorBuzz();
-            showProductMessage(result.message, 'error');
+            showProductMessage(errorMessage(result, 'Transaction failed'), 'error');
           }
         })
         .catch(function(err) {
@@ -833,14 +870,15 @@
         return;
       }
       showMessage('Adding product...', 'success');
-      apiGet('addProduct', {
+      apiPostJson('/inventory/add-product', {
         upc: currentProduct.upc,
         name: name,
-        pickCategory: pickCategory,
-        taxCategory: taxCategory,
+        pick_category: pickCategory,
+        tax_category: taxCategory,
         qty: qty
       })
-        .then(function(result) {
+        .then(function(res) {
+          var result = res.body;
           if (result.success) {
             playSuccessBeep();
             showMessage('Added: ' + name, 'success');
@@ -854,7 +892,31 @@
             lookupUpc(currentProduct.upc);
           } else {
             playErrorBuzz();
-            showMessage(result.message, 'error');
+            showMessage(errorMessage(result, 'Could not add product'), 'error');
+          }
+        })
+        .catch(function(err) {
+          playErrorBuzz();
+          showMessage('Error: ' + err.message, 'error');
+        });
+    }
+    
+    function saveForLater() {
+      var note = document.getElementById('pendingNote').value.trim();
+      showMessage('Saving...', 'success');
+      apiPostJson('/inventory/save-for-later', {
+        upc: currentProduct.upc,
+        note: note
+      })
+        .then(function(res) {
+          var result = res.body;
+          if (result.success) {
+            playSuccessBeep();
+            showMessage('Saved UPC for later', 'success');
+            resetScan();
+          } else {
+            playErrorBuzz();
+            showMessage(errorMessage(result, 'Could not save'), 'error');
           }
         })
         .catch(function(err) {
@@ -874,40 +936,19 @@
       hideProductMessage();
     }
     
-    function deduplicateProducts(products) {
-      var groups = {};
-      for (var i = 0; i < products.length; i++) {
-        var p = products[i];
-        var normalized = normalizeUpc(p.upc);
-        if (!groups[normalized]) groups[normalized] = [];
-        groups[normalized].push(p);
-      }
-      var result = [];
-      for (var key in groups) {
-        var group = groups[key];
-        if (group.length === 1) {
-          result.push(group[0]);
-        } else {
-          var withLeadingZero = null;
-          for (var j = 0; j < group.length; j++) {
-            if (group[j].upc.charAt(0) === '0') {
-              withLeadingZero = group[j];
-              break;
-            }
-          }
-          result.push(withLeadingZero || group[0]);
-        }
-      }
-      result.sort(function(a, b) {
-        return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
-      });
-      return result;
-    }
-    
+    // Bulk product list, used only by the Inventory (browse/search) tab —
+    // the scan tab looks up one UPC at a time via lookupUpc() above.
+    // No client-side dedup needed here: Neon already consolidated
+    // alias/leading-zero duplicates during migration (they live in
+    // upc_aliases now, not as duplicate basement_inventory rows), so the
+    // old deduplicateProducts() step has nothing left to do.
     function loadInventory() {
-      return apiGet('getProducts')
-        .then(function(products) {
-          allProducts = deduplicateProducts(products);
+      return apiGetJson('/inventory/products')
+        .then(function(res) {
+          allProducts = (res.body.products || []).map(mapProduct);
+          allProducts.sort(function(a, b) {
+            return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+          });
           renderList(allProducts);
         })
         .catch(function(err) {
