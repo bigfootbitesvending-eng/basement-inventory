@@ -1,9 +1,9 @@
-  <!DOCTYPE html>
+<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Pick List (v1.1)</title>
+  <title>Pick List (v1.2)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -143,7 +143,6 @@
     var READ_URL = 'https://randysmith42.app.n8n.cloud/webhook/pick-list';
     var WRITE_URL = 'https://randysmith42.app.n8n.cloud/webhook/pick-list/pick';
     var FINALIZE_URL = 'https://randysmith42.app.n8n.cloud/webhook/pick-list/finalize';
-    var INVENTORY_API_URL = 'https://script.google.com/macros/s/AKfycbyvezOXPtgMvo0WiS2FeJkeKXOzazf3BXoDF0pfLa1pbrrEXeLqLedTtg0m6_cYlFIOmA/exec';
 
     var params = new URLSearchParams(window.location.search);
     var locationParam = params.get('location');
@@ -151,13 +150,7 @@
     var modeParam = params.get('mode');
 
     var items = [];
-    var onHandMap = {};
     var itemState = {};
-
-    function normalizeUpc(upc) {
-      if (!upc) return '';
-      return String(upc).trim().replace(/^'+/, '').replace(/^0+/, '');
-    }
 
     function capitalize(s) {
       if (!s) return '';
@@ -172,10 +165,10 @@
       }
 
       document.getElementById('header').innerHTML =
-        '<h1>📋 ' + capitalize(locationParam) + ' Pick List (v1.1)</h1>' +
+        '<h1>📋 ' + capitalize(locationParam) + ' Pick List (v1.2)</h1>' +
         '<div class="meta" id="metaLine">' + dateParam + ' — ' + (modeParam === 'light' ? 'Light Stock' : 'Full Stock') + '</div>';
 
-      Promise.all([loadPickList(), loadInventory()])
+      loadPickList()
         .then(function() { render(); })
         .catch(function(err) {
           document.getElementById('content').innerHTML =
@@ -201,20 +194,15 @@
         });
     }
 
-    function loadInventory() {
-      var url = INVENTORY_API_URL + '?action=getProducts';
-      return fetch(url)
-        .then(function(r) { return r.json(); })
-        .then(function(products) {
-          onHandMap = {};
-          products.forEach(function(p) {
-            onHandMap[normalizeUpc(p.upc)] = p.qty;
-          });
-        });
-    }
-
+    // on_hand now comes straight off each pick_list item — Pick List — Read
+    // joins basement_inventory (alias-resolved) server-side. No separate
+    // fetch needed; this used to hit the old Apps Script getProducts action
+    // directly, which stopped reflecting reality the moment writes moved to
+    // Neon. That was the actual bug: not a missing field, a second stale
+    // data source the page never stopped calling.
     function getOnHand(upc) {
-      var qty = onHandMap[normalizeUpc(upc)];
+      var item = findItem(upc);
+      var qty = item ? item.on_hand : undefined;
       return (qty === undefined || qty === null) ? '—' : qty;
     }
 
