@@ -176,6 +176,13 @@
         return;
       }
 
+      var todayStr = getTodayDateString();
+      if (dateParam !== todayStr) {
+        var banner = document.getElementById('dateWarningBanner');
+        banner.textContent = '⚠ This pick list is for ' + dateParam + ', not today (' + todayStr + ').';
+        banner.style.display = 'block';
+      }
+      
       document.getElementById('header').innerHTML =
         '<h1>📋 ' + capitalize(locationParam) + ' Pick List (v1.2)</h1>' +
         '<div class="meta" id="metaLine">' + dateParam + ' — ' + (modeParam === 'light' ? 'Light Stock' : 'Full Stock') + '</div>';
@@ -188,6 +195,14 @@
         });
     }
 
+    function getTodayDateString() {
+      var now = new Date();
+      var mm = String(now.getMonth() + 1).padStart(2, '0');
+      var dd = String(now.getDate()).padStart(2, '0');
+      var yy = String(now.getFullYear()).slice(-2);
+      return mm + '-' + dd + '-' + yy;
+    }
+    
     function loadPickList() {
       var url = READ_URL + '?location=' + encodeURIComponent(locationParam) +
         '&date=' + encodeURIComponent(dateParam) +
