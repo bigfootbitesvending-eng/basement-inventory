@@ -233,6 +233,7 @@
         '<div class="alias-main" onclick="toggleExpand(\'' + alias.alias_upc + '\')">' +
           '<div>' +
             '<div class="alias-upcs">' + alias.alias_upc + '<span class="arrow">&rarr;</span>' + alias.canonical_upc + '</div>' +
+            '<div class="alias-note" style="font-weight:600;color:#333;">' + (alias.canonical_product_name || '(product not found)') + '</div>' +
             (alias.source_note ? '<div class="alias-note">' + alias.source_note + '</div>' : '') +
           '</div>' +
           '<div class="alias-chevron">' + (isExpanded ? '&#9650;' : '&#9660;') + '</div>' +
@@ -242,6 +243,8 @@
       if (isExpanded) {
         expandedHtml =
           '<div class="alias-expanded">' +
+            '<label>Canonical product (read-only, reflects current canonical UPC)</label>' +
+            '<input type="text" value="' + (alias.canonical_product_name || '(product not found)') + '" disabled>' +
             '<label>Alias UPC (fixed)</label>' +
             '<input type="text" value="' + alias.alias_upc + '" disabled>' +
             '<label>Canonical UPC</label>' +
