@@ -406,6 +406,7 @@
     // CONFIGURATION — n8n webhook base (Neon-backed, replaces Apps Script)
     // ============================================
     var API_BASE = 'https://randysmith42.app.n8n.cloud/webhook';
+    var API_KEY = 'tMEUHYnK8aCNccKZ5Zp#oMBazyR3deGM';
 
     var html5QrCode = null;
     var isScanning = false;
@@ -432,7 +433,7 @@
         }
         if (qs.length) url += '?' + qs.join('&');
       }
-      return fetch(url).then(function(r) {
+      return fetch(url, { headers: { 'X-API-Key': API_KEY } }).then(function(r) {
         return r.json().then(function(body) {
           return { ok: r.ok, status: r.status, body: body };
         });
@@ -443,7 +444,7 @@
       var url = API_BASE + path;
       return fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
         body: JSON.stringify(payload)
       }).then(function(r) {
         return r.json().then(function(body) {
