@@ -559,10 +559,11 @@
       var select = document.getElementById('sessionLocation');
       if (!select) return;
       select.innerHTML = '<option value="">Select destination location...</option>';
-      for (var i = 0; i < locations.length; i++) {
+      var realLocations = getRealLocations();
+      for (var i = 0; i < realLocations.length; i++) {
         var opt = document.createElement('option');
-        opt.value = locations[i];
-        opt.textContent = locations[i];
+        opt.value = realLocations[i];
+        opt.textContent = realLocations[i];
         select.appendChild(opt);
       }
     }
@@ -594,6 +595,11 @@
     // ============================================
     // LOCATIONS
     // ============================================
+
+    function getRealLocations() {
+      var idx = locations.indexOf('---');
+      return idx === -1 ? locations.slice() : locations.slice(0, idx);
+    }
     
     function loadLocations() {
       apiGetJson('/inventory/locations')
@@ -602,9 +608,16 @@
           var outSelect = document.getElementById('outLocation');
           outSelect.innerHTML = '<option value="">Select location...</option>';
           for (var i = 0; i < locations.length; i++) {
+            var loc = locations[i];
             var opt = document.createElement('option');
-            opt.value = locations[i];
-            opt.textContent = locations[i];
+            if (loc === '---') {
+              opt.disabled = true;
+              opt.value = '';
+              opt.textContent = '──────────';
+            } else {
+              opt.value = loc;
+              opt.textContent = loc;
+            }
             outSelect.appendChild(opt);
           }
           populateSessionDropdown();
