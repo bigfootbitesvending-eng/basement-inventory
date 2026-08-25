@@ -217,7 +217,7 @@
       var url = READ_URL + '?location=' + encodeURIComponent(locationParam) +
         '&date=' + encodeURIComponent(dateParam) +
         '&mode=' + encodeURIComponent(modeParam);
-      return fetch(url)
+      return fetch(url, { headers: { 'X-API-Key': API_KEY } })
         .then(function(r) { return r.json().then(function(body) { return { ok: r.ok, body: body }; }); })
         .then(function(result) {
           if (!result.ok) {
@@ -389,7 +389,7 @@
 
       fetch(WRITE_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
         body: JSON.stringify(body)
       })
         .then(function(r) { return r.json(); })
@@ -453,7 +453,7 @@ function finalizeSession() {
   document.getElementById('content').innerHTML = '<div class="loading">Sending shopping list...</div>';
   fetch(FINALIZE_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
     body: JSON.stringify({ location: locationParam, date: dateParam, mode: modeParam })
     })
     .then(function(r) { return r.json().then(function(body) { return { ok: r.ok, body: body }; }); })
