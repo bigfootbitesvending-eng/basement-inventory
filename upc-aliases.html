@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>UPC Aliases</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      min-height: 100vh;
+      padding: 10px;
+    }
+
+    .container { max-width: 700px; margin: 0 auto; }
+
+    .header { text-align: center; margin-bottom: 15px; }
+    .header h1 { font-size: 1.3rem; color: #333; margin-bottom: 4px; }
+    .header .meta { font-size: 0.9rem; color: #777; margin-top: 2px; }
+
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-bottom: 8px;
+    }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-add { background: #4472C4; color: white; }
+    .btn-save { background: #548235; color: white; }
+    .btn-cancel { background: #888; color: white; }
+    .btn-delete { background: #C0392B; color: white; }
+    .btn-small {
+      padding: 8px 14px;
+      width: auto;
+      display: inline-block;
+      margin-bottom: 0;
+      margin-right: 8px;
+      font-size: 0.85rem;
+    }
+
+    .add-form {
+      background: white;
+      border-radius: 10px;
+      padding: 14px;
+      margin-bottom: 15px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      display: none;
+    }
+    .add-form.open { display: block; }
+    .add-form label {
+      display: block;
+      font-size: 0.82rem;
+      color: #777;
+      margin-top: 10px;
+      margin-bottom: 4px;
+    }
+    .add-form label:first-child { margin-top: 0; }
+    .add-form input {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 0.95rem;
+    }
+    .form-actions { display: flex; gap: 10px; margin-top: 14px; }
+    .form-actions .btn { flex: 1; margin-bottom: 0; }
+
+    .alias-row {
+      background: white;
+      border-radius: 10px;
+      margin-bottom: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      padding: 12px 14px;
+    }
+    .alias-main {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+    }
+    .alias-upcs { font-weight: 600; font-size: 0.95rem; color: #333; }
+    .alias-upcs .arrow { color: #4472C4; margin: 0 6px; }
+    .alias-note { font-size: 0.8rem; color: #777; margin-top: 3px; }
+    .alias-chevron { color: #aaa; font-size: 1.1rem; margin-left: 10px; flex-shrink: 0; }
+
+    .alias-expanded {
+      padding-top: 12px;
+      margin-top: 12px;
+      border-top: 1px solid #eee;
+    }
+    .alias-expanded label {
+      display: block;
+      font-size: 0.82rem;
+      color: #777;
+      margin-top: 10px;
+      margin-bottom: 4px;
+    }
+    .alias-expanded label:first-child { margin-top: 0; }
+    .alias-expanded input {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 0.95rem;
+    }
+    .alias-expanded input:disabled {
+      background: #f0f0f0;
+      color: #888;
+    }
+    .expanded-actions { display: flex; gap: 8px; margin-top: 14px; }
+    .expanded-actions .btn { flex: 1; margin-bottom: 0; }
+
+    .loading, .empty-state { text-align: center; padding: 30px; color: #666; }
+
+    .error-banner {
+      background: #f8d7da;
+      color: #721c24;
+      padding: 14px;
+      border-radius: 8px;
+      text-align: center;
+      margin-bottom: 15px;
+    }
+    .success-banner {
+      background: #d4edda;
+      color: #155724;
+      padding: 12px 14px;
+      border-radius: 8px;
+      text-align: center;
+      margin-bottom: 15px;
+      font-weight: 600;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🔗 UPC Aliases</h1>
+      <div class="meta" id="metaLine">Loading...</div>
+    </div>
+
+    <div id="successBanner" class="success-banner"></div>
+
+    <button class="btn btn-add" id="toggleAddBtn" onclick="toggleAddForm()">+ Add Alias</button>
+
+    <div class="add-form" id="addForm">
+      <label>Alias UPC (the value another table/source uses)</label>
+      <input type="text" id="newAliasUpc" placeholder="e.g. 000003444009">
+      <label>Canonical UPC (the value actually stored in basement_inventory)</label>
+      <input type="text" id="newCanonicalUpc" placeholder="e.g. 03444009">
+      <label>Source note (optional)</label>
+      <input type="text" id="newSourceNote" placeholder="e.g. Reese's PB Cup — UPC-E short form">
+      <div class="form-actions">
+        <button class="btn btn-cancel" onclick="toggleAddForm()">Cancel</button>
+        <button class="btn btn-save" onclick="createAlias()">Save</button>
+      </div>
+    </div>
+
+    <div id="content" class="loading">Loading aliases...</div>
+  </div>
+
+  <script>
+    var READ_URL = 'https://randysmith42.app.n8n.cloud/webhook/upc-aliases';
+    var WRITE_URL = 'https://randysmith42.app.n8n.cloud/webhook/upc-aliases';
+
+    var aliases = [];
+    var expandedUpc = null;
+
+    function init() {
+      loadAliases()
+        .then(function() { render(); })
+        .catch(function(err) {
+          document.getElementById('content').innerHTML =
+            '<div class="error-banner">Error loading aliases: ' + err.message + '</div>';
+          document.getElementById('metaLine').textContent = '';
+        });
+    }
+
+    function loadAliases() {
+      return fetch(READ_URL)
+        .then(function(r) { return r.json().then(function(body) { return { ok: r.ok, body: body }; }); })
+        .then(function(result) {
+          if (!result.ok) throw new Error(result.body.error || 'Request failed');
+          aliases = Array.isArray(result.body) ? result.body : [];
+        });
+    }
+
+    function showSuccess(msg) {
+      var banner = document.getElementById('successBanner');
+      banner.textContent = msg;
+      banner.style.display = 'block';
+      setTimeout(function() { banner.style.display = 'none'; }, 3000);
+    }
+
+    function toggleAddForm() {
+      var form = document.getElementById('addForm');
+      form.classList.toggle('open');
+      if (form.classList.contains('open')) {
+        document.getElementById('newAliasUpc').value = '';
+        document.getElementById('newCanonicalUpc').value = '';
+        document.getElementById('newSourceNote').value = '';
+      }
+    }
+
+    function render() {
+      var container = document.getElementById('content');
+      var metaEl = document.getElementById('metaLine');
+      metaEl.textContent = aliases.length + (aliases.length === 1 ? ' alias' : ' aliases');
+
+      if (aliases.length === 0) {
+        container.innerHTML = '<div class="empty-state">No aliases yet.</div>';
+        return;
+      }
+
+      var sorted = aliases.slice().sort(function(a, b) {
+        return String(a.alias_upc).localeCompare(String(b.alias_upc));
+      });
+
+      container.innerHTML = sorted.map(renderRow).join('');
+    }
+
+    function renderRow(alias) {
+      var isExpanded = expandedUpc === alias.alias_upc;
+
+      var mainHtml =
+        '<div class="alias-main" onclick="toggleExpand(\'' + alias.alias_upc + '\')">' +
+          '<div>' +
+            '<div class="alias-upcs">' + alias.alias_upc + '<span class="arrow">&rarr;</span>' + alias.canonical_upc + '</div>' +
+            (alias.source_note ? '<div class="alias-note">' + alias.source_note + '</div>' : '') +
+          '</div>' +
+          '<div class="alias-chevron">' + (isExpanded ? '&#9650;' : '&#9660;') + '</div>' +
+        '</div>';
+
+      var expandedHtml = '';
+      if (isExpanded) {
+        expandedHtml =
+          '<div class="alias-expanded">' +
+            '<label>Alias UPC (fixed)</label>' +
+            '<input type="text" value="' + alias.alias_upc + '" disabled>' +
+            '<label>Canonical UPC</label>' +
+            '<input type="text" id="editCanonical-' + alias.alias_upc + '" value="' + alias.canonical_upc + '">' +
+            '<label>Source note</label>' +
+            '<input type="text" id="editNote-' + alias.alias_upc + '" value="' + (alias.source_note || '') + '">' +
+            '<div class="expanded-actions">' +
+              '<button class="btn btn-delete" onclick="deleteAlias(\'' + alias.alias_upc + '\')">Delete</button>' +
+              '<button class="btn btn-save" onclick="updateAlias(\'' + alias.alias_upc + '\')">Save</button>' +
+            '</div>' +
+          '</div>';
+      }
+
+      return '<div class="alias-row">' + mainHtml + expandedHtml + '</div>';
+    }
+
+    function toggleExpand(aliasUpc) {
+      expandedUpc = (expandedUpc === aliasUpc) ? null : aliasUpc;
+      render();
+    }
+
+    function createAlias() {
+      var aliasUpc = document.getElementById('newAliasUpc').value.trim();
+      var canonicalUpc = document.getElementById('newCanonicalUpc').value.trim();
+      var sourceNote = document.getElementById('newSourceNote').value.trim();
+
+      if (!aliasUpc || !canonicalUpc) {
+        alert('Alias UPC and Canonical UPC are both required.');
+        return;
+      }
+      if (aliasUpc === canonicalUpc) {
+        alert('Alias UPC and Canonical UPC cannot be the same value.');
+        return;
+      }
+
+      submitWrite({ operation: 'create', alias_upc: aliasUpc, canonical_upc: canonicalUpc, source_note: sourceNote || null })
+        .then(function() {
+          toggleAddForm();
+          showSuccess('Alias added.');
+          return loadAliases();
+        })
+        .then(render)
+        .catch(function(err) { alert('Error: ' + err.message); });
+    }
+
+    function updateAlias(aliasUpc) {
+      var canonicalUpc = document.getElementById('editCanonical-' + aliasUpc).value.trim();
+      var sourceNote = document.getElementById('editNote-' + aliasUpc).value.trim();
+
+      if (!canonicalUpc) {
+        alert('Canonical UPC is required.');
+        return;
+      }
+
+      submitWrite({ operation: 'update', alias_upc: aliasUpc, canonical_upc: canonicalUpc, source_note: sourceNote || null })
+        .then(function() {
+          expandedUpc = null;
+          showSuccess('Alias updated.');
+          return loadAliases();
+        })
+        .then(render)
+        .catch(function(err) { alert('Error: ' + err.message); });
+    }
+
+    function deleteAlias(aliasUpc) {
+      if (!window.confirm('Delete alias ' + aliasUpc + '? This cannot be undone.')) return;
+
+      submitWrite({ operation: 'delete', alias_upc: aliasUpc })
+        .then(function() {
+          expandedUpc = null;
+          showSuccess('Alias deleted.');
+          return loadAliases();
+        })
+        .then(render)
+        .catch(function(err) { alert('Error: ' + err.message); });
+    }
+
+    function submitWrite(body) {
+      return fetch(WRITE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+        .then(function(r) { return r.json().then(function(resBody) { return { ok: r.ok, body: resBody }; }); })
+        .then(function(result) {
+          if (!result.ok) throw new Error(result.body.error || 'Request failed');
+          return result.body;
+        });
+    }
+
+    init();
+  </script>
+</body>
+</html>
