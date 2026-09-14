@@ -8,6 +8,12 @@
 <link href="https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/shared/styles.css">
 <style>
+  /* The hidden attribute is only display:none in the browser's default
+     stylesheet, so any class below that sets its own display value (flex,
+     grid, etc.) silently wins over it. This rule forces hidden to always
+     win, regardless of what a class declares. */
+  [hidden] { display: none !important; }
+
   main { max-width: 680px; margin: 0 auto; padding: 2.5rem 1.1rem 4rem; }
 
   header { margin-bottom: 1.25rem; border-bottom: 2px solid var(--ink); padding-bottom: 1rem; }
