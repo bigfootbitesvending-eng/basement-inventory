@@ -979,7 +979,7 @@
         });
     }
 
-        function loadRecentActivity() {
+    function loadRecentActivity() {
       return apiGetJson('/inventory/transactions', { hours: 4 })
         .then(function(res) {
           renderRecentActivity(res.body.transactions || []);
