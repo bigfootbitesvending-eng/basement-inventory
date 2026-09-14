@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bigfoot Bites — Reorder Status</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/shared/styles.css">
+<style>
+  main { max-width: 680px; margin: 0 auto; padding: 2.5rem 1.1rem 4rem; }
+
+  header { margin-bottom: 1.25rem; border-bottom: 2px solid var(--ink); padding-bottom: 1rem; }
+  h1 { font-size: 1.6rem; margin: 0 0 0.25rem; }
+
+  .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 1.25rem; }
+  .subtitle { color: var(--ink-soft); font-size: 0.85rem; }
+
+  .refresh-btn {
+    font-family: var(--font-body); font-weight: 600; font-size: 0.85rem;
+    background: #fff; border: 1px solid var(--rule); border-radius: 6px;
+    padding: 0.5rem 0.95rem; color: var(--ledger-green); cursor: pointer;
+    flex: 0 0 auto;
+  }
+  .refresh-btn:hover { background: var(--ledger-green-soft); }
+  .refresh-btn:disabled { opacity: 0.5; cursor: default; background: #fff; }
+  .refresh-btn:focus-visible { outline: 2px solid var(--ledger-green); outline-offset: 2px; }
+
+  .view-toggle { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+  .view-btn {
+    flex: 1; font-family: var(--font-body); font-weight: 600; font-size: 0.9rem;
+    background: #fff; border: 1px solid var(--rule); border-radius: 6px;
+    padding: 0.65rem; color: var(--ink-soft); cursor: pointer;
+  }
+  .view-btn[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .view-btn:focus-visible { outline: 2px solid var(--ledger-green); outline-offset: 2px; }
+
+  .chip-bar { display: flex; gap: 0.5rem; overflow-x: auto; padding-bottom: 0.5rem; margin-bottom: 1rem; }
+  .chip-bar::-webkit-scrollbar { display: none; }
+  .chip {
+    flex: 0 0 auto; font-family: var(--font-body); font-weight: 600; font-size: 0.82rem;
+    background: #fff; border: 1px solid var(--rule); border-radius: 999px;
+    padding: 0.45rem 0.95rem; color: var(--ink-soft); cursor: pointer; white-space: nowrap;
+  }
+  .chip[aria-pressed="true"] { background: var(--ledger-green); border-color: var(--ledger-green); color: #fff; }
+  .chip:focus-visible { outline: 2px solid var(--ledger-green); outline-offset: 2px; }
+
+  .row-list { display: flex; flex-direction: column; gap: 0.7rem; }
+  .row-card {
+    background: #fff; border: 1px solid var(--rule); border-left: 4px solid var(--rule);
+    border-radius: 6px; padding: 0.95rem 1.1rem;
+  }
+  .row-card[data-status="critical"] { border-left-color: var(--status-error); }
+  .row-card[data-status="warning"] { border-left-color: var(--status-draft); }
+  .row-card[data-status="fine"] { border-left-color: var(--ledger-green); }
+  .row-card[data-status="not_tracked"] { border-left-color: var(--status-not-started); }
+
+  .row-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; }
+  .row-name { font-family: var(--font-display); font-weight: 700; font-size: 1rem; line-height: 1.25; }
+  .row-category { color: var(--ink-soft); font-size: 0.78rem; margin-top: 0.15rem; }
+
+  .badge {
+    display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.75rem; font-weight: 600;
+    padding: 0.28rem 0.6rem; border-radius: 999px; white-space: nowrap; flex: 0 0 auto; color: var(--ink);
+  }
+  .badge .dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
+  .badge[data-status="critical"] { background: var(--status-error-soft); }
+  .badge[data-status="critical"] .dot { background: var(--status-error); }
+  .badge[data-status="warning"] { background: var(--status-draft-soft); }
+  .badge[data-status="warning"] .dot { background: var(--status-draft); }
+  .badge[data-status="fine"] { background: var(--ledger-green-soft); }
+  .badge[data-status="fine"] .dot { background: var(--ledger-green); }
+  .badge[data-status="not_tracked"] { background: color-mix(in srgb, var(--status-not-started) 22%, var(--paper)); }
+  .badge[data-status="not_tracked"] .dot { background: var(--status-not-started); }
+
+  .row-stats { display: flex; flex-wrap: wrap; gap: 0.6rem 1.2rem; margin-top: 0.65rem; }
+  .stat { min-width: 4.5rem; }
+  .stat-label { color: var(--ink-soft); font-size: 0.72rem; display: block; }
+  .stat-value { font-weight: 600; font-size: 0.88rem; }
+
+  .trend-toggle {
+    background: none; border: none; padding: 0; margin-top: 0.6rem; font-size: 0.78rem;
+    color: var(--ledger-green); font-weight: 600; cursor: pointer; text-decoration: underline;
+  }
+  .trend-toggle:focus-visible { outline: 2px solid var(--ledger-green); outline-offset: 2px; }
+  .trend-line { font-size: 0.8rem; color: var(--ink-soft); margin-top: 0.4rem; display: none; }
+  .row-card.expanded .trend-line { display: block; }
+
+  .empty-state, .error-state {
+    text-align: center; padding: 2.75rem 1rem; color: var(--ink-soft);
+    background: #fff; border: 1px solid var(--rule); border-radius: 6px;
+  }
+  .error-state .refresh-btn { margin-top: 0.9rem; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Reorder Status</h1>
+  </header>
+
+  <div class="toolbar">
+    <div class="subtitle" id="asOf">Loading…</div>
+    <button class="refresh-btn" id="refreshBtn" type="button">Refresh</button>
+  </div>
+
+  <div class="view-toggle">
+    <button class="view-btn" data-view="triage" aria-pressed="true" type="button">Low Stock</button>
+    <button class="view-btn" data-view="category" aria-pressed="false" type="button">By Category</button>
+  </div>
+
+  <div class="chip-bar" id="chipBar" hidden></div>
+
+  <div class="row-list" id="rowList"></div>
+</main>
+
+<script src="/shared/config.js"></script>
+<script>
+(function () {
+  // ---- API integration ----------------------------------------------
+  // config.js (loaded above) declares the global API_KEY constant, same
+  // pattern as Tax & Revenue Share Obligations and the other CRUD tools.
+  var API_BASE = 'https://randysmith42.app.n8n.cloud/webhook/reorder-signal';
+
+  var state = { rows: [], view: 'triage', category: null, loading: false, error: null, generatedAt: null };
+
+  var els = {
+    asOf: document.getElementById('asOf'),
+    refreshBtn: document.getElementById('refreshBtn'),
+    viewBtns: document.querySelectorAll('.view-btn'),
+    chipBar: document.getElementById('chipBar'),
+    rowList: document.getElementById('rowList')
+  };
+
+  function statusLabel(status) {
+    switch (status) {
+      case 'critical': return 'Critical';
+      case 'warning': return 'Warning';
+      case 'fine': return 'Fine';
+      case 'not_tracked': return 'Not tracked';
+      default: return status;
+    }
+  }
+
+  function formatRate(rate) {
+    return (rate === null || rate === undefined) ? '—' : rate.toFixed(1) + '/day';
+  }
+
+  function escapeHtml(str) {
+    var div = document.createElement('div');
+    div.textContent = str == null ? '' : String(str);
+    return div.innerHTML;
+  }
+
+  function rowCardHTML(row) {
+    var runway = row.days_runway !== null
+      ? row.days_runway + 'd of ' + row.reorder_floor_days + 'd floor'
+      : '—';
+    return (
+      '<div class="row-card" data-status="' + row.status + '">' +
+        '<div class="row-top">' +
+          '<div>' +
+            '<div class="row-name">' + escapeHtml(row.product_name) + '</div>' +
+            '<div class="row-category">' + escapeHtml(row.pick_category) + '</div>' +
+          '</div>' +
+          '<span class="badge" data-status="' + row.status + '"><span class="dot"></span>' + statusLabel(row.status) + '</span>' +
+        '</div>' +
+        '<div class="row-stats">' +
+          '<div class="stat"><span class="stat-label">Stock</span><span class="stat-value">' + row.stock_at_last_run + '</span></div>' +
+          '<div class="stat"><span class="stat-label">Runway</span><span class="stat-value">' + runway + '</span></div>' +
+          '<div class="stat"><span class="stat-label">Suggested</span><span class="stat-value">' + row.suggested_reorder_qty + '</span></div>' +
+          '<div class="stat"><span class="stat-label">Rate (30d)</span><span class="stat-value">' + formatRate(row.daily_rate_30d) + '</span></div>' +
+        '</div>' +
+        '<button class="trend-toggle" type="button" aria-expanded="false">Recent trend</button>' +
+        '<div class="trend-line">7-day rate: ' + formatRate(row.daily_rate_7d) +
+          (row.sold_in_last_30 !== null ? ' · ' + row.sold_in_last_30 + ' sold in last 30 days' : '') +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function renderChips() {
+    var categories = Array.from(new Set(state.rows.map(function (r) { return r.pick_category; }))).sort();
+    if (!state.category || categories.indexOf(state.category) === -1) {
+      state.category = categories[0] || null;
+    }
+    els.chipBar.innerHTML = categories.map(function (cat) {
+      var active = cat === state.category;
+      return '<button class="chip" data-cat="' + escapeHtml(cat) + '" aria-pressed="' + active + '" type="button">' + escapeHtml(cat) + '</button>';
+    }).join('');
+  }
+
+  function render() {
+    els.refreshBtn.disabled = state.loading;
+    els.refreshBtn.textContent = state.loading ? 'Refreshing…' : 'Refresh';
+
+    if (state.generatedAt) {
+      els.asOf.textContent = 'As of ' + new Date(state.generatedAt).toLocaleString('en-US', { timeZone: 'America/Chicago' });
+    } else if (state.loading) {
+      els.asOf.textContent = 'Loading…';
+    }
+
+    if (state.error) {
+      els.chipBar.hidden = true;
+      els.rowList.innerHTML = '<div class="error-state">Couldn\'t load the latest numbers.<br><button class="refresh-btn" id="retryBtn" type="button">Retry</button></div>';
+      document.getElementById('retryBtn').addEventListener('click', loadData);
+      return;
+    }
+
+    if (state.view === 'triage') {
+      els.chipBar.hidden = true;
+      var triageRows = state.rows
+        .filter(function (r) { return r.reorder_flag === true; })
+        .sort(function (a, b) { return a.days_runway - b.days_runway; });
+      els.rowList.innerHTML = triageRows.length
+        ? triageRows.map(rowCardHTML).join('')
+        : '<div class="empty-state">Nothing\'s below its reorder floor right now.</div>';
+    } else {
+      els.chipBar.hidden = false;
+      renderChips();
+      var catRows = state.rows
+        .filter(function (r) { return r.pick_category === state.category; })
+        .sort(function (a, b) { return a.product_name.localeCompare(b.product_name); });
+      els.rowList.innerHTML = catRows.length
+        ? catRows.map(rowCardHTML).join('')
+        : '<div class="empty-state">No items in this category.</div>';
+    }
+  }
+
+  function loadData() {
+    state.loading = true;
+    state.error = null;
+    render();
+    fetch(API_BASE, { method: 'GET', headers: { 'X-API-Key': API_KEY } })
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      })
+      .then(function (data) {
+        state.rows = data.rows || [];
+        state.generatedAt = data.generated_at || null;
+      })
+      .catch(function (err) {
+        state.error = err;
+      })
+      .finally(function () {
+        state.loading = false;
+        render();
+      });
+  }
+
+  els.refreshBtn.addEventListener('click', loadData);
+
+  els.viewBtns.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      els.viewBtns.forEach(function (b) { b.setAttribute('aria-pressed', 'false'); });
+      btn.setAttribute('aria-pressed', 'true');
+      state.view = btn.dataset.view;
+      render();
+    });
+  });
+
+  els.chipBar.addEventListener('click', function (e) {
+    var chip = e.target.closest('.chip');
+    if (!chip) return;
+    state.category = chip.dataset.cat;
+    render();
+  });
+
+  els.rowList.addEventListener('click', function (e) {
+    var btn = e.target.closest('.trend-toggle');
+    if (!btn) return;
+    var card = btn.closest('.row-card');
+    var expanded = card.classList.toggle('expanded');
+    btn.setAttribute('aria-expanded', String(expanded));
+    btn.textContent = expanded ? 'Hide recent trend' : 'Recent trend';
+  });
+
+  loadData();
+})();
+</script>
+</body>
+</html>
