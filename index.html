@@ -1023,7 +1023,16 @@
         var sub = formatActivityTime(g.last);
         if (g.locations.length) sub += ' · ' + g.locations.join(', ');
         html +=
-          '<div style="display:flex;justify-content:space-be
+            '<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #f0f0f0;">' +
+            '<div>' +
+              '<div style="font-size:0.9rem;font-weight:600;color:#333;">' + g.product_name + '</div>' +
+              '<div style="font-size:0.75rem;color:#888;">' + sub + '</div>' +
+            '</div>' +
+            '<div style="font-size:0.85rem;font-weight:600;color:' + color + ';">' + g.type + ' ' + g.qty + '</div>' +
+          '</div>';
+      });
+      container.innerHTML = html;
+    }
     
     function renderList(products) {
       var container = document.getElementById('inventoryList');
