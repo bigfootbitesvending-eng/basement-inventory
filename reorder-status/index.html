@@ -81,13 +81,7 @@
   .stat-label { color: var(--ink-soft); font-size: 0.72rem; display: block; }
   .stat-value { font-weight: 600; font-size: 0.88rem; }
 
-  .trend-toggle {
-    background: none; border: none; padding: 0; margin-top: 0.6rem; font-size: 0.78rem;
-    color: var(--ledger-green); font-weight: 600; cursor: pointer; text-decoration: underline;
-  }
-  .trend-toggle:focus-visible { outline: 2px solid var(--ledger-green); outline-offset: 2px; }
-  .trend-line { font-size: 0.8rem; color: var(--ink-soft); margin-top: 0.4rem; display: none; }
-  .row-card.expanded .trend-line, .needs-row.expanded .trend-line { display: block; }
+  .trend-line { font-size: 0.8rem; color: var(--ink-soft); margin-top: 0.6rem; padding-top: 0.6rem; border-top: 1px dashed var(--rule); }
 
   .empty-state, .error-state {
     text-align: center; padding: 2.75rem 1rem; color: var(--ink-soft);
@@ -181,6 +175,27 @@
     return div.innerHTML;
   }
 
+  function trendInfoHTML(row) {
+    var hasConsumption = row.daily_rate_7d !== null || row.daily_rate_30d !== null;
+    var calcLine;
+    if (hasConsumption) {
+      var rate7 = row.daily_rate_7d || 0;
+      var rate30 = row.daily_rate_30d || 0;
+      var effRate = Math.max(rate7, rate30);
+      var effLabel = rate7 >= rate30 ? '7-day' : '30-day';
+      calcLine = row.suggested_reorder_qty + ' units — ' + row.reorder_floor_days + 'd floor x ' +
+        effRate.toFixed(3) + '/day (' + effLabel + ' rate) - ' + row.stock_at_last_run + ' in stock, rounded up';
+    } else {
+      calcLine = 'no sales history to calculate from';
+    }
+    return (
+      '<div class="trend-line">7-day rate: ' + formatRate(row.daily_rate_7d) +
+        (row.sold_in_last_30 !== null ? ' · ' + row.sold_in_last_30 + ' sold in last 30 days' : '') +
+        '<br>Suggested qty: ' + calcLine +
+      '</div>'
+    );
+  }
+
   function rowCardHTML(row) {
     var runway = row.days_runway !== null
       ? row.days_runway + 'd of ' + row.reorder_floor_days + 'd floor'
@@ -200,10 +215,7 @@
           '<div class="stat"><span class="stat-label">Suggested</span><span class="stat-value">' + row.suggested_reorder_qty + '</span></div>' +
           '<div class="stat"><span class="stat-label">Rate (30d)</span><span class="stat-value">' + formatRate(row.daily_rate_30d) + '</span></div>' +
         '</div>' +
-        '<button class="trend-toggle" type="button" aria-expanded="false">Recent trend</button>' +
-        '<div class="trend-line">7-day rate: ' + formatRate(row.daily_rate_7d) +
-          (row.sold_in_last_30 !== null ? ' · ' + row.sold_in_last_30 + ' sold in last 30 days' : '') +
-        '</div>' +
+        trendInfoHTML(row) +
       '</div>'
     );
   }
@@ -238,10 +250,7 @@
           '<div class="stat"><span class="stat-label">Stock</span><span class="stat-value">' + row.stock_at_last_run + '</span></div>' +
           '<div class="stat"><span class="stat-label">Rate (30d)</span><span class="stat-value">' + formatRate(row.daily_rate_30d) + '</span></div>' +
         '</div>' +
-        '<button class="trend-toggle" type="button" aria-expanded="false">Recent trend</button>' +
-        '<div class="trend-line">7-day rate: ' + formatRate(row.daily_rate_7d) +
-          (row.sold_in_last_30 !== null ? ' · ' + row.sold_in_last_30 + ' sold in last 30 days' : '') +
-        '</div>' +
+        trendInfoHTML(row) +
       '</div>'
     );
   }
@@ -379,15 +388,6 @@
     if (!chip) return;
     state.category = chip.dataset.cat;
     render();
-  });
-
-  els.rowList.addEventListener('click', function (e) {
-    var btn = e.target.closest('.trend-toggle');
-    if (!btn) return;
-    var card = btn.closest('.row-card, .needs-row');
-    var expanded = card.classList.toggle('expanded');
-    btn.setAttribute('aria-expanded', String(expanded));
-    btn.textContent = expanded ? 'Hide recent trend' : 'Recent trend';
   });
 
   loadData();
