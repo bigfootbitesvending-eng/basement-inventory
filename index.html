@@ -261,7 +261,7 @@
 </head>
 <body>
   <div class="container">
-    <h1>📦 Basement Inventory v3.0.0</h1>
+    <h1>📦 Basement Inventory v3.1.0</h1>
 
     <!-- Session-level messages (start/end session, camera errors) -->
     <div id="message" class="message hidden"></div>
@@ -1020,7 +1020,7 @@
       var html = '';
       order.forEach(function(key) {
         var g = groups[key];
-        var color = g.type === 'IN' ? '#548235' : '#C65911';
+        var color = g.type === 'IN' ? '#548235' : (g.type === 'OUT' ? '#C65911' : '#888');
         var sub = formatActivityTime(g.last);
         if (g.locations.length) sub += ' · ' + g.locations.join(', ');
         html +=
