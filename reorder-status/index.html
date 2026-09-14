@@ -81,7 +81,15 @@
   .stat-label { color: var(--ink-soft); font-size: 0.72rem; display: block; }
   .stat-value { font-weight: 600; font-size: 0.88rem; }
 
-  .trend-line { font-size: 0.8rem; color: var(--ink-soft); margin-top: 0.6rem; padding-top: 0.6rem; border-top: 1px dashed var(--rule); }
+  .trend-toggle {
+    display: block; width: 100%; text-align: left; background: none;
+    border: none; border-top: 1px dashed var(--rule);
+    padding: 0.6rem 0 0; margin-top: 0.6rem; font-size: 0.78rem;
+    color: var(--ledger-green); font-weight: 600; cursor: pointer; text-decoration: underline;
+  }
+  .trend-toggle:focus-visible { outline: 2px solid var(--ledger-green); outline-offset: 2px; }
+  .trend-line { font-size: 0.8rem; color: var(--ink-soft); margin-top: 0.4rem; display: none; }
+  .row-card.expanded .trend-line, .needs-row.expanded .trend-line { display: block; }
 
   .empty-state, .error-state {
     text-align: center; padding: 2.75rem 1rem; color: var(--ink-soft);
@@ -189,6 +197,7 @@
       calcLine = 'no sales history to calculate from';
     }
     return (
+      '<button class="trend-toggle" type="button" aria-expanded="false">Recent trend</button>' +
       '<div class="trend-line">7-day rate: ' + formatRate(row.daily_rate_7d) +
         (row.sold_in_last_30 !== null ? ' · ' + row.sold_in_last_30 + ' sold in last 30 days' : '') +
         '<br>Suggested qty: ' + calcLine +
@@ -388,6 +397,15 @@
     if (!chip) return;
     state.category = chip.dataset.cat;
     render();
+  });
+
+  els.rowList.addEventListener('click', function (e) {
+    var btn = e.target.closest('.trend-toggle');
+    if (!btn) return;
+    var card = btn.closest('.row-card, .needs-row');
+    var expanded = card.classList.toggle('expanded');
+    btn.setAttribute('aria-expanded', String(expanded));
+    btn.textContent = expanded ? 'Hide recent trend' : 'Recent trend';
   });
 
   loadData();
