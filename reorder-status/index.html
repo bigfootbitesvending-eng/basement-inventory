@@ -249,7 +249,7 @@
 
   function rowCardHTML(row) {
     var runway = row.days_runway !== null
-      ? row.days_runway + 'd of ' + row.reorder_floor_days + 'd floor'
+      ? Math.floor(row.days_runway) + 'd of ' + row.reorder_floor_days + 'd floor'
       : '—';
     return (
       '<div class="row-card" data-status="' + row.status + '">' +
