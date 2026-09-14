@@ -381,6 +381,13 @@
         
         <button class="btn btn-secondary" onclick="resetScan()">Cancel</button>
       </div>
+      
+      <div id="recentActivityCard" class="card">
+        <div style="font-size:0.85rem;font-weight:600;color:#555;margin-bottom:8px;">
+          Recent activity <span style="font-weight:400;color:#999;">· last 4 hours</span>
+        </div>
+        <div id="recentActivity" class="loading">Loading recent activity...</div>
+      </div>
     </div>
     
     <!-- Inventory List Tab -->
@@ -514,6 +521,7 @@
       loadLocations();
       renderSessionPanel();
       loadInventory();
+      loadRecentActivity();
 
       // lookupUpc no longer depends on allProducts being loaded first (it's
       // a live call now), so the deep-link flow doesn't need to wait on
@@ -858,6 +866,7 @@
                 break;
               }
             }
+            loadRecentActivity();
           } else {
             playErrorBuzz();
             showProductMessage(errorMessage(result, 'Transaction failed'), 'error');
@@ -969,6 +978,52 @@
             '<div style="color:red">Error loading inventory</div>';
         });
     }
+
+        function loadRecentActivity() {
+      return apiGetJson('/inventory/transactions', { hours: 4 })
+        .then(function(res) {
+          renderRecentActivity(res.body.transactions || []);
+        })
+        .catch(function(err) {
+          document.getElementById('recentActivity').innerHTML =
+            '<div style="color:red">Error loading recent activity</div>';
+        });
+    }
+
+    function formatActivityTime(isoString) {
+      var d = new Date(isoString);
+      return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    }
+
+    function renderRecentActivity(transactions) {
+      var container = document.getElementById('recentActivity');
+      if (transactions.length === 0) {
+        container.innerHTML = '<div style="text-align:center;color:#666;font-size:0.85rem;">No activity in the last 4 hours</div>';
+        return;
+      }
+
+      var groups = {};
+      var order = [];
+      transactions.forEach(function(t) {
+        var key = t.upc + '|' + t.type;
+        if (!groups[key]) {
+          groups[key] = { product_name: t.product_name, type: t.type, qty: 0, locations: [], last: t.created_at };
+          order.push(key);
+        }
+        groups[key].qty += t.qty;
+        if (t.location && groups[key].locations.indexOf(t.location) === -1) {
+          groups[key].locations.push(t.location);
+        }
+      });
+
+      var html = '';
+      order.forEach(function(key) {
+        var g = groups[key];
+        var color = g.type === 'IN' ? '#548235' : '#C65911';
+        var sub = formatActivityTime(g.last);
+        if (g.locations.length) sub += ' · ' + g.locations.join(', ');
+        html +=
+          '<div style="display:flex;justify-content:space-be
     
     function renderList(products) {
       var container = document.getElementById('inventoryList');
