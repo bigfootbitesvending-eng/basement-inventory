@@ -94,6 +94,30 @@
     background: #fff; border: 1px solid var(--rule); border-radius: 6px;
   }
   .error-state .refresh-btn { margin-top: 0.9rem; }
+
+  .bucket-header {
+    font-family: var(--font-display); font-weight: 700; font-size: 1.15rem;
+    margin: 1.5rem 0 0.6rem; padding-bottom: 0.4rem; border-bottom: 2px solid var(--ink);
+  }
+  .bucket-header:first-child { margin-top: 0; }
+
+  .category-subheader {
+    font-family: var(--font-body); font-weight: 600; font-size: 0.75rem;
+    text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft);
+    margin: 1rem 0 0.5rem;
+  }
+
+  .needs-row-list { display: flex; flex-direction: column; gap: 0.6rem; margin-bottom: 0.2rem; }
+  .needs-row {
+    background: #fff; border: 1px solid var(--rule); border-radius: 6px; padding: 0.85rem 1.1rem;
+  }
+  .needs-row-name { font-family: var(--font-display); font-weight: 700; font-size: 0.95rem; margin-bottom: 0.5rem; }
+  .trend-note { color: var(--ink-soft); font-weight: 500; font-size: 0.78rem; }
+
+  .overflow-note {
+    text-align: center; color: var(--ink-soft); font-size: 0.85rem;
+    padding: 1.25rem 1rem; margin-top: 0.5rem; border-top: 1px solid var(--rule);
+  }
 </style>
 </head>
 <body>
@@ -109,7 +133,7 @@
   </div>
 
   <div class="view-toggle">
-    <button class="view-btn" data-view="triage" aria-pressed="true" type="button">Low Stock</button>
+    <button class="view-btn" data-view="needs_attention" aria-pressed="true" type="button">Needs Attention</button>
     <button class="view-btn" data-view="category" aria-pressed="false" type="button">By Category</button>
   </div>
 
@@ -126,7 +150,8 @@
   // pattern as Tax & Revenue Share Obligations and the other CRUD tools.
   var API_BASE = 'https://randysmith42.app.n8n.cloud/webhook/reorder-signal';
 
-  var state = { rows: [], view: 'triage', category: null, loading: false, error: null, generatedAt: null };
+  var state = { rows: [], view: 'needs_attention', category: null, loading: false, error: null, generatedAt: null };
+  var BUCKET_CAP_DAYS = 10;
 
   var els = {
     asOf: document.getElementById('asOf'),
@@ -183,6 +208,91 @@
     );
   }
 
+  function groupByCategory(rows) {
+    var groupsMap = {};
+    rows.forEach(function (r) {
+      var cat = r.pick_category || 'Uncategorized';
+      if (!groupsMap[cat]) groupsMap[cat] = [];
+      groupsMap[cat].push(r);
+    });
+    return Object.keys(groupsMap).sort().map(function (cat) {
+      return {
+        category: cat,
+        items: groupsMap[cat].sort(function (a, b) { return a.product_name.localeCompare(b.product_name); })
+      };
+    });
+  }
+
+  function needsRowHTML(row) {
+    var daysLeftText = row.days_left + 'd';
+    if (row.days_left_from_30d_trend) {
+      daysLeftText += ' <span class="trend-note">(30d trend)</span>';
+    }
+    return (
+      '<div class="needs-row">' +
+        '<div class="needs-row-name">' + escapeHtml(row.product_name) + '</div>' +
+        '<div class="row-stats">' +
+          '<div class="stat"><span class="stat-label">Days left</span><span class="stat-value">' + daysLeftText + '</span></div>' +
+          '<div class="stat"><span class="stat-label">Suggested</span><span class="stat-value">' + row.suggested_reorder_qty + '</span></div>' +
+          '<div class="stat"><span class="stat-label">Stock</span><span class="stat-value">' + row.stock_at_last_run + '</span></div>' +
+          '<div class="stat"><span class="stat-label">Rate (30d)</span><span class="stat-value">' + formatRate(row.daily_rate_30d) + '</span></div>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function renderBucketGroups(rows) {
+    return groupByCategory(rows).map(function (group) {
+      return '<h3 class="category-subheader">' + escapeHtml(group.category) + '</h3>' +
+        '<div class="needs-row-list">' + group.items.map(needsRowHTML).join('') + '</div>';
+    }).join('');
+  }
+
+  function renderNeedsAttention() {
+    var flagged = state.rows.filter(function (r) { return r.reorder_flag === true; });
+    if (!flagged.length) {
+      els.rowList.innerHTML = '<div class="empty-state">Nothing\'s below its reorder floor right now.</div>';
+      return;
+    }
+
+    var buckets = {};
+    var unknownTiming = [];
+    var overflowCount = 0;
+
+    flagged.forEach(function (r) {
+      if (r.days_left === null || r.days_left === undefined) {
+        unknownTiming.push(r);
+        return;
+      }
+      var bucketNum = Math.max(0, Math.floor(r.days_left));
+      if (bucketNum > BUCKET_CAP_DAYS) {
+        overflowCount++;
+        return;
+      }
+      if (!buckets[bucketNum]) buckets[bucketNum] = [];
+      buckets[bucketNum].push(r);
+    });
+
+    var bucketNums = Object.keys(buckets).map(Number).sort(function (a, b) { return a - b; });
+
+    var html = '';
+    bucketNums.forEach(function (num) {
+      var label = num === 0 ? 'Buy today' : (num === 1 ? 'Buy in the next 1 day' : 'Buy in the next ' + num + ' days');
+      html += '<h2 class="bucket-header">' + label + '</h2>' + renderBucketGroups(buckets[num]);
+    });
+
+    if (unknownTiming.length) {
+      html += '<h2 class="bucket-header">Timing unclear</h2>' + renderBucketGroups(unknownTiming);
+    }
+
+    if (overflowCount > 0) {
+      html += '<div class="overflow-note">' + overflowCount + ' more item' + (overflowCount === 1 ? '' : 's') +
+        ' due later than that — check back as they get closer.</div>';
+    }
+
+    els.rowList.innerHTML = html;
+  }
+
   function renderChips() {
     var categories = Array.from(new Set(state.rows.map(function (r) { return r.pick_category; }))).sort();
     if (!state.category || categories.indexOf(state.category) === -1) {
@@ -211,14 +321,9 @@
       return;
     }
 
-    if (state.view === 'triage') {
+    if (state.view === 'needs_attention') {
       els.chipBar.hidden = true;
-      var triageRows = state.rows
-        .filter(function (r) { return r.reorder_flag === true; })
-        .sort(function (a, b) { return a.days_runway - b.days_runway; });
-      els.rowList.innerHTML = triageRows.length
-        ? triageRows.map(rowCardHTML).join('')
-        : '<div class="empty-state">Nothing\'s below its reorder floor right now.</div>';
+      renderNeedsAttention();
     } else {
       els.chipBar.hidden = false;
       renderChips();
