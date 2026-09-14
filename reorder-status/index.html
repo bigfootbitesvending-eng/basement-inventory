@@ -38,12 +38,31 @@
   .view-btn[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
   .view-btn:focus-visible { outline: 2px solid var(--ledger-green); outline-offset: 2px; }
 
+  .filter-wrap { position: relative; margin-bottom: 0.75rem; }
   .filter-input {
     width: 100%; box-sizing: border-box; font-family: var(--font-body); font-size: 0.9rem;
-    padding: 0.6rem 0.8rem; border: 1px solid var(--rule); border-radius: 6px;
-    background: #fff; color: var(--ink); margin-bottom: 0.75rem;
+    padding: 0.6rem 2.2rem 0.6rem 0.8rem; border: 1px solid var(--rule); border-radius: 6px;
+    background: #fff; color: var(--ink);
   }
   .filter-input:focus-visible { outline: 2px solid var(--ledger-green); outline-offset: 1px; }
+  .filter-clear {
+    position: absolute; right: 0.4rem; top: 50%; transform: translateY(-50%);
+    background: none; border: none; color: var(--status-error); font-size: 1.2rem;
+    font-weight: 700; line-height: 1; cursor: pointer; padding: 0.25rem 0.4rem;
+  }
+  .filter-clear:focus-visible { outline: 2px solid var(--ledger-green); outline-offset: 2px; }
+
+  .status-filter-bar { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  .status-chip {
+    font-family: var(--font-body); font-weight: 600; font-size: 0.8rem;
+    background: #fff; border: 1px solid var(--rule); border-radius: 999px;
+    padding: 0.4rem 0.85rem; color: var(--ink-soft); cursor: pointer;
+  }
+  .status-chip:focus-visible { outline: 2px solid var(--ledger-green); outline-offset: 2px; }
+  .status-chip[aria-pressed="true"][data-status="critical"] { background: var(--status-error-soft); border-color: var(--status-error); color: var(--ink); }
+  .status-chip[aria-pressed="true"][data-status="warning"] { background: var(--status-draft-soft); border-color: var(--status-draft); color: var(--ink); }
+  .status-chip[aria-pressed="true"][data-status="fine"] { background: var(--ledger-green-soft); border-color: var(--ledger-green); color: var(--ink); }
+  .status-chip[aria-pressed="true"][data-status="not_tracked"] { background: color-mix(in srgb, var(--status-not-started) 22%, var(--paper)); border-color: var(--status-not-started); color: var(--ink); }
 
   .chip-bar { display: flex; gap: 0.5rem; overflow-x: auto; padding-bottom: 0.5rem; margin-bottom: 1rem; }
   .chip-bar::-webkit-scrollbar { display: none; }
@@ -146,9 +165,19 @@
     <button class="view-btn" data-view="category" aria-pressed="false" type="button">By Category</button>
   </div>
 
-  <input type="text" class="filter-input" id="categoryFilter" placeholder='Filter by name (e.g. "jerry")' hidden>
+  <div class="filter-wrap" id="filterWrap" hidden>
+    <input type="text" class="filter-input" id="categoryFilter" placeholder='Filter by name (e.g. "jerry")'>
+    <button class="filter-clear" id="filterClear" type="button" aria-label="Clear filter" hidden>×</button>
+  </div>
 
   <div class="chip-bar" id="chipBar" hidden></div>
+
+  <div class="status-filter-bar" id="statusFilterBar" hidden>
+    <button class="status-chip" data-status="critical" aria-pressed="false" type="button">Critical</button>
+    <button class="status-chip" data-status="warning" aria-pressed="false" type="button">Warning</button>
+    <button class="status-chip" data-status="fine" aria-pressed="false" type="button">Fine</button>
+    <button class="status-chip" data-status="not_tracked" aria-pressed="false" type="button">Not tracked</button>
+  </div>
 
   <div class="row-list" id="rowList"></div>
 </main>
@@ -161,14 +190,17 @@
   // pattern as Tax & Revenue Share Obligations and the other CRUD tools.
   var API_BASE = 'https://randysmith42.app.n8n.cloud/webhook/reorder-signal';
 
-  var state = { rows: [], view: 'needs_attention', category: null, filterText: '', loading: false, error: null, generatedAt: null };
+  var state = { rows: [], view: 'needs_attention', category: null, filterText: '', statusFilters: [], loading: false, error: null, generatedAt: null };
   var BUCKET_CAP_DAYS = 10;
 
   var els = {
     asOf: document.getElementById('asOf'),
     refreshBtn: document.getElementById('refreshBtn'),
     viewBtns: document.querySelectorAll('.view-btn'),
+    filterWrap: document.getElementById('filterWrap'),
     filterInput: document.getElementById('categoryFilter'),
+    filterClear: document.getElementById('filterClear'),
+    statusFilterBar: document.getElementById('statusFilterBar'),
     chipBar: document.getElementById('chipBar'),
     rowList: document.getElementById('rowList')
   };
@@ -348,41 +380,37 @@
     }
 
     if (state.error) {
-      els.filterInput.hidden = true;
+      els.filterWrap.hidden = true;
       els.chipBar.hidden = true;
+      els.statusFilterBar.hidden = true;
       els.rowList.innerHTML = '<div class="error-state">Couldn\'t load the latest numbers.<br><button class="refresh-btn" id="retryBtn" type="button">Retry</button></div>';
       document.getElementById('retryBtn').addEventListener('click', loadData);
       return;
     }
 
     if (state.view === 'needs_attention') {
-      els.filterInput.hidden = true;
+      els.filterWrap.hidden = true;
       els.chipBar.hidden = true;
+      els.statusFilterBar.hidden = true;
       renderNeedsAttention();
     } else {
-      els.filterInput.hidden = false;
+      els.filterWrap.hidden = false;
       els.chipBar.hidden = false;
+      els.statusFilterBar.hidden = false;
+      els.filterClear.hidden = !state.filterText;
       renderChips();
 
       var filterText = state.filterText.trim().toLowerCase();
-      var catRows;
-      if (filterText) {
-        catRows = state.rows
-          .filter(function (r) { return r.product_name.toLowerCase().indexOf(filterText) !== -1; })
-          .sort(function (a, b) {
-            var catCompare = a.pick_category.localeCompare(b.pick_category);
-            return catCompare !== 0 ? catCompare : a.product_name.localeCompare(b.product_name);
-          });
-      } else {
-        catRows = state.rows
-          .filter(function (r) { return r.pick_category === state.category; })
-          .sort(function (a, b) { return a.product_name.localeCompare(b.product_name); });
-      }
+      var catRows = state.rows
+        .filter(function (r) { return r.pick_category === state.category; })
+        .filter(function (r) { return !filterText || r.product_name.toLowerCase().indexOf(filterText) !== -1; })
+        .filter(function (r) { return !state.statusFilters.length || state.statusFilters.indexOf(r.status) !== -1; })
+        .sort(function (a, b) { return a.product_name.localeCompare(b.product_name); });
 
       els.rowList.innerHTML = catRows.length
         ? catRows.map(rowCardHTML).join('')
-        : '<div class="empty-state">' + (filterText
-            ? 'No products match "' + escapeHtml(state.filterText) + '".'
+        : '<div class="empty-state">' + (filterText || state.statusFilters.length
+            ? 'No items in this category match the current filters.'
             : 'No items in this category.') + '</div>';
     }
   }
@@ -422,6 +450,29 @@
 
   els.filterInput.addEventListener('input', function () {
     state.filterText = els.filterInput.value;
+    els.filterClear.hidden = !state.filterText;
+    render();
+  });
+
+  els.filterClear.addEventListener('click', function () {
+    state.filterText = '';
+    els.filterInput.value = '';
+    els.filterInput.focus();
+    render();
+  });
+
+  els.statusFilterBar.addEventListener('click', function (e) {
+    var chip = e.target.closest('.status-chip');
+    if (!chip) return;
+    var status = chip.dataset.status;
+    var idx = state.statusFilters.indexOf(status);
+    if (idx === -1) {
+      state.statusFilters.push(status);
+      chip.setAttribute('aria-pressed', 'true');
+    } else {
+      state.statusFilters.splice(idx, 1);
+      chip.setAttribute('aria-pressed', 'false');
+    }
     render();
   });
 
@@ -429,8 +480,6 @@
     var chip = e.target.closest('.chip');
     if (!chip) return;
     state.category = chip.dataset.cat;
-    state.filterText = '';
-    els.filterInput.value = '';
     render();
   });
 
