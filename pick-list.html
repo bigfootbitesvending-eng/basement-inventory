@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Pick List (v1.2)</title>
+  <title>Pick List (v1.3)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -140,6 +140,24 @@
       font-weight: 600;
       margin-bottom: 12px;
     }
+
+    .carryover-banner {
+      background: #fff3cd;
+      color: #856404;
+      border: 1px solid #ffeeba;
+      padding: 12px 14px;
+      border-radius: 8px;
+      text-align: center;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+
+    .carryover-note {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #b45309;
+      margin-top: 2px;
+    }
   </style>
 </head>
 <body>
@@ -164,6 +182,7 @@
 
     var items = [];
     var itemState = {};
+    var hasPriorSession = false;
 
     function capitalize(s) {
       if (!s) return '';
@@ -189,7 +208,7 @@
       }
       
       document.getElementById('header').innerHTML =
-        '<h1>📋 ' + capitalize(locationParam) + ' Pick List (v1.2)</h1>' +
+        '<h1>📋 ' + capitalize(locationParam) + ' Pick List (v1.3)</h1>' +
         '<div class="meta" id="metaLine">' + dateParam + ' — ' + (modeParam === 'light' ? 'Light Stock' : 'Full Stock') + '</div>';
 
       loadPickList()
@@ -225,6 +244,7 @@
           }
           var payload = Array.isArray(result.body) ? result.body[0] : result.body;
           items = payload.items || [];
+          hasPriorSession = payload.has_prior_session === true;
           items.forEach(function(item) {
             itemState[item.upc] = { expanded: false, touched: false, qty: 0 };
           });
@@ -278,6 +298,9 @@
       });
 
       var html = '';
+      if (hasPriorSession) {
+        html += '<div class="carryover-banner">📦 Yesterday\'s session has undelivered picks. Quantities in bags are shown on each item.</div>';
+      }
       categories.forEach(function(cat) {
         html += '<div class="category-header">' + cat + ' — ' + byCategory[cat].length + '</div>';
         byCategory[cat].forEach(function(item) { html += renderItem(item); });
@@ -294,11 +317,18 @@
       var onHand = getOnHand(item.upc);
       var stockoutClass = item.is_stockout ? ' stockout' : '';
       var skippedStyle = isSkipped ? ' style="opacity:0.5;"' : '';
+      var priorQtyPicked = item.prior_qty_picked || 0;
+      var carryoverHtml = '';
+      if (priorQtyPicked > 0) {
+        var stillNeeded = Math.max(item.bring_qty - priorQtyPicked, 0);
+        carryoverHtml = '<div class="carryover-note">In bags: ' + priorQtyPicked + ' &nbsp;\u00b7&nbsp; Still needed: ' + stillNeeded + '</div>';
+      }
 
       var collapsedHtml =
         '<div class="item-collapsed' + stockoutClass + '"' + skippedStyle + ' onclick="toggleExpand(\'' + item.upc + '\')">' +
           '<div class="item-info">' +
             '<div class="item-name' + stockoutClass + '">' + item.product_name + '</div>' +
+            carryoverHtml +
             '<div class="item-sub">Bring: ' + item.bring_qty + ' &nbsp;|&nbsp; On hand: ' + onHand + (isSkipped ? ' &nbsp;|&nbsp; SKIPPED' : '') + '</div>' +
           '</div>' +
           (isPicked ? '<div class="item-check">✓</div>' : '') +
