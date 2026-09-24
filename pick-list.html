@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Pick List (v1.4)</title>
+  <title>Pick List (v1.5)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -158,22 +158,67 @@
       color: #b45309;
       margin-top: 2px;
     }
+
+    .btn-reset {
+      background: white;
+      color: #C0392B;
+      border: 2px solid #C0392B;
+    }
+
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.5);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 20px;
+    }
+
+    .modal-box {
+      background: white;
+      border-radius: 10px;
+      padding: 20px;
+      max-width: 380px;
+      width: 100%;
+    }
+
+    .modal-box h3 { margin-bottom: 10px; font-size: 1.1rem; }
+    .modal-box p { margin-bottom: 16px; color: #555; font-size: 0.9rem; }
+    .modal-actions { display: flex; gap: 10px; }
+    .modal-actions .btn { flex: 1; margin-bottom: 0; }
   </style>
 </head>
 <body>
   <div class="container">
     <div id="dateWarningBanner" class="date-warning-banner" style="display:none;"></div>
+    <div id="resetErrorBanner" class="error-banner" style="display:none;"></div>
     <div class="header" id="header"></div>
+    <button class="btn btn-reset" id="resetBtnTop" onclick="openResetModal()" style="display:none;">Reset Session</button>
     <div id="content" class="loading">Loading pick list...</div>
   </div>
   <button class="btn" id="endSessionBtn" onclick="openReviewScreen()"
     style="background:#888;color:white;margin-top:5px;display:none;">End Session</button>
+  <button class="btn btn-reset" id="resetBtnBottom" onclick="openResetModal()" style="margin-top:5px;display:none;">Reset Session</button>
+
+  <div class="modal-overlay" id="resetModalOverlay">
+    <div class="modal-box">
+      <h3>Reset Session?</h3>
+      <p>This will clear all picks for today's session. Items already packed into bags will need to be re-picked.</p>
+      <div class="modal-actions">
+        <button class="btn" style="background:#888;color:white;" onclick="closeResetModal()">Cancel</button>
+        <button class="btn btn-reset" onclick="confirmReset()">Reset Session</button>
+      </div>
+    </div>
+  </div>
 
   <script src="/shared/config.js"></script>
   <script>
     var READ_URL = 'https://randysmith42.app.n8n.cloud/webhook/pick-list';
     var WRITE_URL = 'https://randysmith42.app.n8n.cloud/webhook/pick-list/pick';
     var FINALIZE_URL = 'https://randysmith42.app.n8n.cloud/webhook/pick-list/finalize';
+    var RESET_URL = 'https://randysmith42.app.n8n.cloud/webhook/pick-list/reset';
 
     var params = new URLSearchParams(window.location.search);
     var locationParam = params.get('location');
@@ -198,6 +243,7 @@
     var items = [];
     var itemState = {};
     var hasPriorSession = false;
+    var isToday = true;
 
     function capitalize(s) {
       if (!s) return '';
@@ -221,9 +267,10 @@
         banner.textContent = '⚠ This pick list is for ' + dateParam + ', not today.';
         banner.style.display = 'block';
       }
+      isToday = !parsedDate || isSameDate(parsedDate, today);
       
       document.getElementById('header').innerHTML =
-        '<h1>📋 ' + capitalize(locationParam) + ' Pick List (v1.4)</h1>' +
+        '<h1>📋 ' + capitalize(locationParam) + ' Pick List (v1.5)</h1>' +
         '<div class="meta" id="metaLine">' + dateParam + ' — ' + (modeParam === 'light' ? 'Light Stock' : 'Full Stock') + '</div>';
 
       loadPickList()
@@ -296,6 +343,8 @@
       if (items.length === 0) {
         if (metaEl) metaEl.textContent = dateParam + ' — ' + (modeParam === 'light' ? 'Light Stock' : 'Full Stock') + ' — 0 Items';
           document.getElementById('endSessionBtn').style.display = 'none';
+          document.getElementById('resetBtnTop').style.display = 'none';
+          document.getElementById('resetBtnBottom').style.display = 'none';
           container.innerHTML = '<div class="empty-state">No items for this location and date.</div>';
         return;
       }
@@ -323,6 +372,9 @@
 
       container.innerHTML = html;
       document.getElementById('endSessionBtn').style.display = 'block';
+      var showReset = isToday ? 'block' : 'none';
+      document.getElementById('resetBtnTop').style.display = showReset;
+      document.getElementById('resetBtnBottom').style.display = showReset;
     }
 
     function renderItem(item) {
@@ -428,6 +480,42 @@
       submitPick(upc, 'unskip', 0);
     }
 
+    function openResetModal() {
+      document.getElementById('resetModalOverlay').style.display = 'flex';
+    }
+
+    function closeResetModal() {
+      document.getElementById('resetModalOverlay').style.display = 'none';
+    }
+
+    function confirmReset() {
+      fetch(RESET_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+        body: JSON.stringify({ location: locationParam, date: dateParam })
+      })
+        .then(function(r) { return r.json().then(function(body) { return { ok: r.ok, body: body }; }); })
+        .then(function(result) {
+          if (result.ok) {
+            window.location.reload();
+          } else {
+            closeResetModal();
+            var msg = (result.body && result.body.error)
+              ? result.body.error + (result.body.details && result.body.details.length ? ': ' + result.body.details.join(', ') : '')
+              : 'Reset failed.';
+            var banner = document.getElementById('resetErrorBanner');
+            banner.textContent = msg;
+            banner.style.display = 'block';
+          }
+        })
+        .catch(function(err) {
+          closeResetModal();
+          var banner = document.getElementById('resetErrorBanner');
+          banner.textContent = 'Network error: ' + err.message;
+          banner.style.display = 'block';
+        });
+    }
+
     function submitPick(upc, action, qty) {
       var body = { location: locationParam, date: dateParam, upc: upc, action: action };
       if (action === 'pick') body.qty_picked = qty;
@@ -437,19 +525,23 @@
         headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
         body: JSON.stringify(body)
       })
-        .then(function(r) { return r.json(); })
+        .then(function(r) { return r.json().then(function(resBody) { return { ok: r.ok, status: r.status, body: resBody }; }); })
         .then(function(result) {
-          if (result.status === 'ok') {
+          if (result.ok && result.body.status === 'ok') {
             var item = findItem(upc);
-            item.picked = result.picked;
-            item.qty_picked = result.qty_picked;
-            item.skipped = result.skipped;
+            item.picked = result.body.picked;
+            item.qty_picked = result.body.qty_picked;
+            item.skipped = result.body.skipped;
             itemState[upc].touched = false;
             itemState[upc].qty = 0;
             itemState[upc].expanded = (action === 'unpick' || action === 'unskip');
             render();
+          } else if (result.status === 409) {
+            itemState[upc].expanded = false;
+            render();
+            alert('This session is from a previous day and can no longer be modified.');
           } else {
-            alert('Error: ' + (result.error || 'unknown error'));
+            alert('Error: ' + (result.body && result.body.error ? result.body.error : 'unknown error'));
           }
         })
         .catch(function(err) { alert('Network error: ' + err.message); });
