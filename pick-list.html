@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Pick List (v1.3)</title>
+  <title>Pick List (v1.4)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -180,6 +180,21 @@
     var dateParam = params.get('date');
     var modeParam = params.get('mode');
 
+    // Normalize to ISO (YYYY-MM-DD) immediately, regardless of which format
+    // the email link used. The backend's date guard and the Finalize
+    // carryover math both compare/parse this as ISO — a raw MM-DD-YY value
+    // sorts before an ISO string and gets misread as a past date even when
+    // it's genuinely today.
+    (function normalizeDateParam() {
+      var parsed = parseDateParam(dateParam);
+      if (parsed) {
+        var yyyy = parsed.getFullYear();
+        var mm = String(parsed.getMonth() + 1).padStart(2, '0');
+        var dd = String(parsed.getDate()).padStart(2, '0');
+        dateParam = yyyy + '-' + mm + '-' + dd;
+      }
+    })();
+
     var items = [];
     var itemState = {};
     var hasPriorSession = false;
@@ -208,7 +223,7 @@
       }
       
       document.getElementById('header').innerHTML =
-        '<h1>📋 ' + capitalize(locationParam) + ' Pick List (v1.3)</h1>' +
+        '<h1>📋 ' + capitalize(locationParam) + ' Pick List (v1.4)</h1>' +
         '<div class="meta" id="metaLine">' + dateParam + ' — ' + (modeParam === 'light' ? 'Light Stock' : 'Full Stock') + '</div>';
 
       loadPickList()
