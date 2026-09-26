@@ -88,7 +88,7 @@
   <a class="breadcrumb" href="/">← Operator Tools</a>
   <header>
     <h1>Vendor Product Codes</h1>
-    <div class="subtitle">APEX / vendor code &rarr; canonical UPC mapping, per vendor.</div>
+    <div class="subtitle">Each vendor has its own code for a product. This links that code to the matching item in our inventory, so restocking and sales tracking line up correctly.</div>
   </header>
 
   <div class="chip-bar" id="vendor-chip-bar">
@@ -111,7 +111,7 @@
         </select>
       </div>
       <div>
-        <label id="add-code-label" for="add-vendor-code">APEX Code</label>
+        <label id="add-code-label" for="add-vendor-code">Vendor Code</label>
         <input id="add-vendor-code" type="text" required>
       </div>
       <div class="upc-field">
@@ -144,7 +144,7 @@
     <table id="codes-table" hidden>
       <thead>
         <tr>
-          <th id="code-col-header">APEX Code</th>
+          <th id="code-col-header">Vendor Code</th>
           <th>Vendor's Name</th>
           <th>Canonical UPC</th>
           <th>Catalog Product</th>
