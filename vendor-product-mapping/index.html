@@ -6,75 +6,71 @@
 <title>Vendor Product Codes — Bigfoot Bites</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@500;700&family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/shared/styles.css">
 <style>
-  :root {
-    --paper: #F3F4F1;
-    --ink: #1C2321;
-    --ink-soft: #52605B;
-    --rule: #D7D9D3;
-    --ledger-green: #2F6F5E;
-    --ledger-green-soft: #E4EEEA;
-    --danger: #B3492D;
-    --danger-soft: #F5E4DE;
-    --inactive: #9A8F7D;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    background: var(--paper);
-    color: var(--ink);
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    -webkit-font-smoothing: antialiased;
-  }
+  [hidden] { display: none !important; }
+
   main { max-width: 960px; margin: 0 auto; padding: 1.5rem 1.25rem 5rem; }
-  .breadcrumb {
-    font-size: 0.82rem;
-    margin-bottom: 1rem;
-  }
-  .breadcrumb a { color: var(--ink-soft); text-decoration: none; }
-  .breadcrumb a:hover { color: var(--ledger-green); text-decoration: underline; }
-  header { margin-bottom: 2rem; border-bottom: 2px solid var(--ink); padding-bottom: 1rem; }
+  .breadcrumb { display: inline-block; font-size: 0.8rem; color: var(--ink-soft); text-decoration: none; margin-bottom: 0.6rem; }
+  .breadcrumb:hover { color: var(--ledger-green); }
+  .breadcrumb:focus-visible { outline: 2px solid var(--ledger-green); outline-offset: 2px; }
+  header { margin-bottom: 1.5rem; border-bottom: 2px solid var(--ink); padding-bottom: 1rem; }
   h1 { font-family: 'Roboto Slab', serif; font-weight: 700; font-size: 1.6rem; margin: 0 0 0.25rem; letter-spacing: -0.01em; }
   .subtitle { color: var(--ink-soft); font-size: 0.9rem; }
+
+  .chip-bar { display: flex; gap: 0.5rem; overflow-x: auto; padding-bottom: 0.5rem; margin-bottom: 1rem; }
+  .chip-bar::-webkit-scrollbar { display: none; }
+  .chip {
+    flex: 0 0 auto; font-family: 'Inter', sans-serif; font-weight: 600; font-size: 0.82rem;
+    background: #fff; border: 1px solid var(--rule); border-radius: 999px;
+    padding: 0.45rem 0.95rem; color: var(--ink-soft); cursor: pointer; white-space: nowrap;
+  }
+  .chip[aria-pressed="true"] { background: var(--ledger-green); border-color: var(--ledger-green); color: #fff; }
+  .chip:focus-visible { outline: 2px solid var(--ledger-green); outline-offset: 2px; }
+
   .panel { background: #fff; border: 1px solid var(--rule); border-radius: 6px; margin-bottom: 1.5rem; }
   .panel-header { display: flex; align-items: center; justify-content: space-between; padding: 0.9rem 1.1rem; border-bottom: 1px solid var(--rule); gap: 1rem; flex-wrap: wrap; }
   .panel-header h2 { font-family: 'Roboto Slab', serif; font-size: 1rem; margin: 0; }
-  .vendor-filter { display: flex; align-items: center; gap: 0.5rem; }
-  .vendor-filter label { font-size: 0.78rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.04em; }
+
   button { font-family: 'Inter', sans-serif; font-size: 0.85rem; font-weight: 500; border-radius: 4px; border: 1px solid transparent; padding: 0.45rem 0.85rem; cursor: pointer; transition: opacity 0.15s ease; }
   button:hover { opacity: 0.85; }
   button:focus-visible { outline: 2px solid var(--ledger-green); outline-offset: 2px; }
   .btn-primary { background: var(--ledger-green); color: #fff; }
   .btn-quiet { background: transparent; color: var(--ink-soft); border-color: var(--rule); }
-  .btn-danger { background: transparent; color: var(--danger); border-color: var(--danger-soft); }
-  .btn-danger:hover { background: var(--danger-soft); }
+  .btn-danger { background: transparent; color: var(--danger, #B3492D); border-color: var(--danger-soft, #F5E4DE); }
+  .btn-danger:hover { background: var(--danger-soft, #F5E4DE); }
+
   #add-form { display: none; padding: 1.1rem; gap: 0.75rem; grid-template-columns: 0.7fr 0.9fr 1.4fr 1.4fr 1.3fr 0.8fr auto; align-items: end; }
   #add-form.open { display: grid; }
+
   label { display: block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); margin-bottom: 0.3rem; }
   input, select { width: 100%; font-family: 'Inter', sans-serif; font-size: 0.9rem; padding: 0.5rem 0.55rem; border: 1px solid var(--rule); border-radius: 4px; background: #fff; color: var(--ink); }
   input:focus, select:focus { outline: 2px solid var(--ledger-green); outline-offset: 1px; }
+
   .upc-field { position: relative; }
-  .upc-suggestions { position: absolute; top: 100%; left: 0; right: 0; background: #fff; border: 1px solid var(--rule); border-top: none; border-radius: 0 0 4px 4px; max-height: 220px; overflow-y: auto; z-index: 10; display: none; box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
-  .upc-suggestions.open { display: block; }
+  .upc-suggestions { position: absolute; top: 100%; left: 0; right: 0; background: #fff; border: 1px solid var(--rule); border-top: none; border-radius: 0 0 4px 4px; max-height: 220px; overflow-y: auto; z-index: 10; box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
   .upc-suggestion { padding: 0.5rem 0.6rem; font-size: 0.85rem; cursor: pointer; border-bottom: 1px solid var(--rule); }
   .upc-suggestion:last-child { border-bottom: none; }
   .upc-suggestion:hover { background: var(--ledger-green-soft); }
   .upc-suggestion .sug-upc { color: var(--ink-soft); font-family: 'IBM Plex Mono', monospace; font-size: 0.78rem; }
+
   table { width: 100%; border-collapse: collapse; }
   thead th { text-align: left; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); padding: 0.6rem 1rem; border-bottom: 1px solid var(--rule); }
   tbody td { padding: 0.75rem 1rem; border-bottom: 1px solid var(--rule); font-size: 0.92rem; vertical-align: middle; }
   td.code { font-family: 'IBM Plex Mono', monospace; font-size: 0.85rem; }
   .pill { display: inline-block; font-size: 0.72rem; padding: 0.15rem 0.5rem; border-radius: 20px; }
   .pill.matched { background: var(--ledger-green-soft); color: var(--ledger-green); }
-  .pill.pending, .pill.unmatched { background: #F0EEE9; color: var(--inactive); }
+  .pill.pending, .pill.unmatched { background: #F0EEE9; color: var(--inactive, #9A8F7D); }
   td.actions { text-align: right; white-space: nowrap; }
   td.actions button { margin-left: 0.4rem; }
   tr.editing td { background: var(--ledger-green-soft); }
   tr.editing input, tr.editing select { background: #fff; }
+
   .empty-state { padding: 3rem 1rem; text-align: center; color: var(--ink-soft); }
   .empty-state strong { display: block; color: var(--ink); margin-bottom: 0.35rem; font-family: 'Roboto Slab', serif; }
   #status-line { font-size: 0.82rem; color: var(--ink-soft); margin-top: 0.75rem; min-height: 1.2em; }
-  #status-line.error { color: var(--danger); }
+  #status-line.error { color: var(--danger, #B3492D); }
+
   @media (max-width: 800px) {
     #add-form.open { grid-template-columns: 1fr 1fr; }
     thead { display: none; }
@@ -89,22 +85,20 @@
 </head>
 <body>
 <main>
-  <div class="breadcrumb"><a href="https://bigfootbitesvending-eng.github.io/">&larr; Bigfoot Bites Operator Tools</a></div>
+  <a class="breadcrumb" href="/">← Operator Tools</a>
   <header>
     <h1>Vendor Product Codes</h1>
     <div class="subtitle">APEX / vendor code &rarr; canonical UPC mapping, per vendor.</div>
   </header>
 
+  <div class="chip-bar" id="vendor-chip-bar">
+    <button class="chip" data-vendor="AV Live" aria-pressed="false" type="button">AV Live</button>
+    <button class="chip" data-vendor="HAHA" aria-pressed="true" type="button">HAHA</button>
+  </div>
+
   <section class="panel">
     <div class="panel-header">
       <h2>Mappings</h2>
-      <div class="vendor-filter">
-        <label for="vendor-select">Vendor</label>
-        <select id="vendor-select">
-          <option value="HAHA">HAHA</option>
-          <option value="AV Live">AV Live</option>
-        </select>
-      </div>
       <button class="btn-primary" id="toggle-add">+ Add mapping</button>
     </div>
 
@@ -112,8 +106,8 @@
       <div>
         <label for="add-vendor">Vendor</label>
         <select id="add-vendor" required>
-          <option value="HAHA">HAHA</option>
           <option value="AV Live">AV Live</option>
+          <option value="HAHA" selected>HAHA</option>
         </select>
       </div>
       <div>
@@ -123,7 +117,7 @@
       <div class="upc-field">
         <label for="add-canonical-upc">Canonical UPC</label>
         <input id="add-canonical-upc" type="text" autocomplete="off" required placeholder="Search by product name or UPC">
-        <div class="upc-suggestions" id="add-upc-suggestions"></div>
+        <div class="upc-suggestions" id="add-upc-suggestions" hidden></div>
       </div>
       <div>
         <label for="add-product-name">Vendor's product name</label>
@@ -147,10 +141,10 @@
       </div>
     </form>
 
-    <table id="codes-table" style="display:none;">
+    <table id="codes-table" hidden>
       <thead>
         <tr>
-          <th id="code-col-header">Vendor Code</th>
+          <th id="code-col-header">APEX Code</th>
           <th>Vendor's Name</th>
           <th>Canonical UPC</th>
           <th>Catalog Product</th>
@@ -162,7 +156,7 @@
       <tbody id="codes-body"></tbody>
     </table>
 
-    <div class="empty-state" id="empty-state" style="display:none;">
+    <div class="empty-state" id="empty-state" hidden>
       <strong>No mappings yet for this vendor</strong>
       Add the first one above.
     </div>
@@ -179,6 +173,7 @@
 
   const CODE_LABELS = { HAHA: 'APEX Code', 'AV Live': 'Product Name' };
 
+  let currentVendor = 'HAHA';
   let codes = [];
   let products = [];
   let editingId = null;
@@ -187,10 +182,16 @@
   const bodyEl = document.getElementById('codes-body');
   const emptyEl = document.getElementById('empty-state');
   const statusEl = document.getElementById('status-line');
-  const vendorSelect = document.getElementById('vendor-select');
   const codeColHeader = document.getElementById('code-col-header');
   const addCodeLabel = document.getElementById('add-code-label');
   const addVendorSelect = document.getElementById('add-vendor');
+  const vendorChipBar = document.getElementById('vendor-chip-bar');
+
+  function escapeHtml(str) {
+    var div = document.createElement('div');
+    div.textContent = str == null ? '' : String(str);
+    return div.innerHTML;
+  }
 
   function setStatus(message, isError) {
     statusEl.textContent = message || '';
@@ -198,8 +199,7 @@
   }
 
   function updateCodeLabels() {
-    const v = vendorSelect.value;
-    codeColHeader.textContent = CODE_LABELS[v] || 'Vendor Code';
+    codeColHeader.textContent = CODE_LABELS[currentVendor] || 'Vendor Code';
   }
   function updateAddCodeLabel() {
     addCodeLabel.textContent = CODE_LABELS[addVendorSelect.value] || 'Vendor Code';
@@ -215,13 +215,12 @@
   async function loadCodes() {
     setStatus('Loading…');
     try {
-      const res = await fetch(API_BASE + '?vendor=' + encodeURIComponent(vendorSelect.value), {
+      const res = await fetch(API_BASE + '?vendor=' + encodeURIComponent(currentVendor), {
         method: 'GET',
         headers: { 'X-API-Key': API_KEY }
       });
       if (!res.ok) throw new Error('Server returned ' + res.status);
       codes = await res.json();
-      updateCodeLabels();
       render();
       setStatus('');
     } catch (err) {
@@ -242,19 +241,19 @@
 
   function render() {
     if (!codes.length) {
-      tableEl.style.display = 'none';
-      emptyEl.style.display = 'block';
+      tableEl.hidden = true;
+      emptyEl.hidden = false;
       return;
     }
-    tableEl.style.display = 'table';
-    emptyEl.style.display = 'none';
+    tableEl.hidden = false;
+    emptyEl.hidden = true;
     bodyEl.innerHTML = '';
 
     codes.forEach(row => {
       const tr = document.createElement('tr');
       if (editingId === row.id) {
         tr.classList.add('editing');
-        tr.appendChild(editableCell('vendor_code', row, false)); // vendor_code fixed — part of the unique key
+        tr.appendChild(editableCell('vendor_code', row, false)); // fixed — part of the unique key
         tr.appendChild(editableCell('product_name', row, true));
         tr.appendChild(editableCell('canonical_upc', row, true));
         tr.appendChild(td('Catalog Product', row.basement_inventory_name || '(not found)', ''));
@@ -378,6 +377,17 @@
     }
   }
 
+  // --- Vendor chip filter ---
+  vendorChipBar.addEventListener('click', (e) => {
+    const chip = e.target.closest('.chip');
+    if (!chip) return;
+    vendorChipBar.querySelectorAll('.chip').forEach(c => c.setAttribute('aria-pressed', 'false'));
+    chip.setAttribute('aria-pressed', 'true');
+    currentVendor = chip.dataset.vendor;
+    updateCodeLabels();
+    loadCodes();
+  });
+
   // --- Add form + UPC typeahead ---
   const addForm = document.getElementById('add-form');
   const addUpcInput = document.getElementById('add-canonical-upc');
@@ -385,32 +395,31 @@
 
   addUpcInput.addEventListener('input', () => {
     const q = addUpcInput.value.trim().toLowerCase();
-    if (q.length < 2) { suggestionsEl.classList.remove('open'); return; }
+    if (q.length < 2) { suggestionsEl.hidden = true; return; }
     const matches = products.filter(p =>
       (p.product_name && p.product_name.toLowerCase().includes(q)) ||
       (p.upc && p.upc.includes(q))
     ).slice(0, 15);
-    if (!matches.length) { suggestionsEl.classList.remove('open'); return; }
+    if (!matches.length) { suggestionsEl.hidden = true; return; }
     suggestionsEl.innerHTML = matches.map(p =>
-      '<div class="upc-suggestion" data-upc="' + p.upc + '">' + p.product_name +
-      ' <span class="sug-upc">' + p.upc + '</span></div>'
+      '<div class="upc-suggestion" data-upc="' + escapeHtml(p.upc) + '">' + escapeHtml(p.product_name) +
+      ' <span class="sug-upc">' + escapeHtml(p.upc) + '</span></div>'
     ).join('');
-    suggestionsEl.classList.add('open');
+    suggestionsEl.hidden = false;
   });
   suggestionsEl.addEventListener('click', (e) => {
     const row = e.target.closest('.upc-suggestion');
     if (!row) return;
     addUpcInput.value = row.dataset.upc;
-    suggestionsEl.classList.remove('open');
+    suggestionsEl.hidden = true;
   });
   document.addEventListener('click', (e) => {
-    if (!e.target.closest('.upc-field')) suggestionsEl.classList.remove('open');
+    if (!e.target.closest('.upc-field')) suggestionsEl.hidden = true;
   });
 
   document.getElementById('toggle-add').onclick = () => { addForm.classList.add('open'); updateAddCodeLabel(); };
   document.getElementById('cancel-add').onclick = () => { addForm.classList.remove('open'); addForm.reset(); };
   addVendorSelect.addEventListener('change', updateAddCodeLabel);
-  vendorSelect.addEventListener('change', loadCodes);
 
   addForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -435,6 +444,7 @@
     }
   });
 
+  updateCodeLabels();
   updateAddCodeLabel();
   loadProducts()
     .then(loadCodes)
