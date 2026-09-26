@@ -56,6 +56,9 @@
 
   table { width: 100%; border-collapse: collapse; }
   thead th { text-align: left; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); padding: 0.6rem 1rem; border-bottom: 1px solid var(--rule); }
+  thead th.sortable { cursor: pointer; user-select: none; }
+  thead th.sortable:hover { color: var(--ink); }
+  .sort-arrow { display: inline-block; margin-left: 0.3rem; font-size: 0.65rem; width: 0.8em; }
   tbody td { padding: 0.75rem 1rem; border-bottom: 1px solid var(--rule); font-size: 0.92rem; vertical-align: middle; }
   td.code { font-family: 'IBM Plex Mono', monospace; font-size: 0.85rem; }
   .pill { display: inline-block; font-size: 0.72rem; padding: 0.15rem 0.5rem; border-radius: 20px; }
@@ -144,12 +147,12 @@
     <table id="codes-table" hidden>
       <thead>
         <tr>
-          <th id="code-col-header">Vendor Code</th>
-          <th>Vendor's Name</th>
-          <th>Canonical UPC</th>
-          <th>Catalog Product</th>
-          <th>Status</th>
-          <th>Source Note</th>
+          <th class="sortable" data-sort="vendor_code"><span id="code-col-header">Vendor Code</span><span class="sort-arrow"></span></th>
+          <th class="sortable" data-sort="product_name">Vendor's Name<span class="sort-arrow"></span></th>
+          <th class="sortable" data-sort="canonical_upc">Canonical UPC<span class="sort-arrow"></span></th>
+          <th class="sortable" data-sort="basement_inventory_name">Catalog Product<span class="sort-arrow"></span></th>
+          <th class="sortable" data-sort="status">Status<span class="sort-arrow"></span></th>
+          <th class="sortable" data-sort="source_note">Source Note<span class="sort-arrow"></span></th>
           <th></th>
         </tr>
       </thead>
@@ -177,6 +180,8 @@
   let codes = [];
   let products = [];
   let editingId = null;
+  let sortField = 'product_name';
+  let sortDir = 'asc';
 
   const tableEl = document.getElementById('codes-table');
   const bodyEl = document.getElementById('codes-body');
@@ -196,6 +201,24 @@
   function setStatus(message, isError) {
     statusEl.textContent = message || '';
     statusEl.className = isError ? 'error' : '';
+  }
+
+  function sortCodes(list) {
+    const dir = sortDir === 'asc' ? 1 : -1;
+    return list.slice().sort((a, b) => {
+      const av = (a[sortField] ?? '').toString().toLowerCase();
+      const bv = (b[sortField] ?? '').toString().toLowerCase();
+      if (av < bv) return -1 * dir;
+      if (av > bv) return 1 * dir;
+      return 0;
+    });
+  }
+
+  function updateSortIndicators() {
+    document.querySelectorAll('#codes-table thead th.sortable').forEach(th => {
+      const arrow = th.querySelector('.sort-arrow');
+      arrow.textContent = th.dataset.sort === sortField ? (sortDir === 'asc' ? '▲' : '▼') : '';
+    });
   }
 
   function updateCodeLabels() {
@@ -248,8 +271,9 @@
     tableEl.hidden = false;
     emptyEl.hidden = true;
     bodyEl.innerHTML = '';
+    updateSortIndicators();
 
-    codes.forEach(row => {
+    sortCodes(codes).forEach(row => {
       const tr = document.createElement('tr');
       if (editingId === row.id) {
         tr.classList.add('editing');
@@ -376,6 +400,20 @@
       setStatus('Could not delete — ' + err.message, true);
     }
   }
+
+  // --- Column sorting ---
+  document.querySelector('#codes-table thead').addEventListener('click', (e) => {
+    const th = e.target.closest('th.sortable');
+    if (!th) return;
+    const field = th.dataset.sort;
+    if (sortField === field) {
+      sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      sortField = field;
+      sortDir = 'asc';
+    }
+    render();
+  });
 
   // --- Vendor chip filter ---
   vendorChipBar.addEventListener('click', (e) => {
