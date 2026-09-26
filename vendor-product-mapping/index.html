@@ -203,6 +203,41 @@
     statusEl.className = isError ? 'error' : '';
   }
 
+  function attachUpcTypeahead(inputEl) {
+    const wrapper = document.createElement('div');
+    wrapper.style.position = 'relative';
+    inputEl.parentNode.insertBefore(wrapper, inputEl);
+    wrapper.appendChild(inputEl);
+    const suggestBox = document.createElement('div');
+    suggestBox.className = 'upc-suggestions';
+    suggestBox.hidden = true;
+    wrapper.appendChild(suggestBox);
+  
+    inputEl.addEventListener('input', () => {
+      const q = inputEl.value.trim().toLowerCase();
+      if (q.length < 2) { suggestBox.hidden = true; return; }
+      const matches = products.filter(p =>
+        (p.product_name && p.product_name.toLowerCase().includes(q)) ||
+        (p.upc && p.upc.includes(q))
+      ).slice(0, 15);
+      if (!matches.length) { suggestBox.hidden = true; return; }
+      suggestBox.innerHTML = matches.map(p =>
+        '<div class="upc-suggestion" data-upc="' + escapeHtml(p.upc) + '">' + escapeHtml(p.product_name) +
+        ' <span class="sug-upc">' + escapeHtml(p.upc) + '</span></div>'
+      ).join('');
+      suggestBox.hidden = false;
+    });
+    suggestBox.addEventListener('click', (e) => {
+      const row = e.target.closest('.upc-suggestion');
+      if (!row) return;
+      inputEl.value = row.dataset.upc;
+      suggestBox.hidden = true;
+    });
+    document.addEventListener('click', (e) => {
+      if (!wrapper.contains(e.target)) suggestBox.hidden = true;
+    });
+  }
+
   function sortCodes(list) {
     const dir = sortDir === 'asc' ? 1 : -1;
     return list.slice().sort((a, b) => {
@@ -319,6 +354,7 @@
     input.value = row[field] || '';
     if (!editable) input.disabled = true;
     cell.appendChild(input);
+    if (field === 'canonical_upc' && editable) attachUpcTypeahead(input);
     return cell;
   }
 
@@ -482,10 +518,33 @@
     }
   });
 
+  const urlParams = new URLSearchParams(location.search);
+  const urlVendor = urlParams.get('vendor');
+  const urlEditId = urlParams.get('edit');
+  
+  if (urlVendor && ['HAHA', 'AV Live'].includes(urlVendor)) {
+    currentVendor = urlVendor;
+    vendorChipBar.querySelectorAll('.chip').forEach(c => {
+      c.setAttribute('aria-pressed', String(c.dataset.vendor === urlVendor));
+    });
+  }
   updateCodeLabels();
   updateAddCodeLabel();
   loadProducts()
     .then(loadCodes)
+    .then(() => {
+      if (urlEditId) {
+        const match = codes.find(c => String(c.id) === urlEditId);
+        if (match) {
+          editingId = match.id;
+          render();
+          setTimeout(() => {
+            const rowInput = document.getElementById('edit-canonical_upc-' + match.id);
+            if (rowInput) { rowInput.scrollIntoView({ behavior: 'smooth', block: 'center' }); rowInput.focus(); }
+          }, 50);
+        }
+      }
+    })
     .catch(err => setStatus('Could not load product catalog — ' + err.message, true));
 </script>
 </body>
