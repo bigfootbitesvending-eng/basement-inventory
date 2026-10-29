@@ -166,6 +166,7 @@
     <div id="content" class="loading">Loading aliases...</div>
   </div>
 
+  <script src="/shared/config.js"></script>
   <script>
     var READ_URL = 'https://randysmith42.app.n8n.cloud/webhook/upc-aliases';
     var WRITE_URL = 'https://randysmith42.app.n8n.cloud/webhook/upc-aliases';
@@ -184,7 +185,7 @@
     }
 
     function loadAliases() {
-      return fetch(READ_URL)
+      return fetch(READ_URL, { headers: { 'X-API-Key': API_KEY } })
         .then(function(r) { return r.json().then(function(body) { return { ok: r.ok, body: body }; }); })
         .then(function(result) {
           if (!result.ok) throw new Error(result.body.error || 'Request failed');
@@ -325,7 +326,7 @@
     function submitWrite(body) {
       return fetch(WRITE_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
         body: JSON.stringify(body)
       })
         .then(function(r) { return r.json().then(function(resBody) { return { ok: r.ok, body: resBody }; }); })
