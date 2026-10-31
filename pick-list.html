@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Pick List (v1.6)</title>
+  <title>Pick List (v1.7)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -271,7 +271,7 @@
       isToday = !parsedDate || isSameDate(parsedDate, today);
       
       document.getElementById('header').innerHTML =
-        '<h1>📋 ' + capitalize(locationParam) + ' Pick List (v1.6)</h1>' +
+        '<h1>📋 ' + capitalize(locationParam) + ' Pick List (v1.7)</h1>' +
         '<div class="meta" id="metaLine">' + dateParam + ' — ' + (modeParam === 'light' ? 'Light Stock' : 'Full Stock') + '</div>' +
         '<div class="explainer">Days left: what\'s at the location, at the last 30 days\' pace.</div>';
 
@@ -338,8 +338,8 @@
       if (item.location_no_sales === true) return text + ', no recent sales';
       if (days === undefined || days === null) return text;
       if (days > 30) return text + ', lasts 30+ days';
-      if (days < 1) return text + ', lasts &lt;1 day';
-      var d = Math.round(days);
+      // Rounded up, as the restock email rounds days to stockout, so the two always agree.
+      var d = Math.ceil(days);
       return text + ', lasts ~' + d + (d === 1 ? ' day' : ' days');
     }
 
