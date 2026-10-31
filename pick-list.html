@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Pick List (v1.5)</title>
+  <title>Pick List (v1.6)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -57,6 +57,7 @@
     .item-name { font-weight: 600; font-size: 0.95rem; color: #333; }
     .item-name.stockout { color: #C0392B; }
     .item-sub { font-size: 0.82rem; color: #777; margin-top: 2px; }
+    .explainer { font-size: 0.8rem; color: #777; margin-top: 4px; }
     .item-check { font-size: 1.3rem; color: #548235; margin-left: 10px; flex-shrink: 0; }
 
     .item-expanded { padding: 14px; border-top: 1px solid #eee; background: #fafafa; }
@@ -270,8 +271,9 @@
       isToday = !parsedDate || isSameDate(parsedDate, today);
       
       document.getElementById('header').innerHTML =
-        '<h1>📋 ' + capitalize(locationParam) + ' Pick List (v1.5)</h1>' +
-        '<div class="meta" id="metaLine">' + dateParam + ' — ' + (modeParam === 'light' ? 'Light Stock' : 'Full Stock') + '</div>';
+        '<h1>📋 ' + capitalize(locationParam) + ' Pick List (v1.6)</h1>' +
+        '<div class="meta" id="metaLine">' + dateParam + ' — ' + (modeParam === 'light' ? 'Light Stock' : 'Full Stock') + '</div>' +
+        '<div class="explainer">Days left: what\'s at the location, at the last 30 days\' pace.</div>';
 
       loadPickList()
         .then(function() { render(); })
@@ -323,6 +325,34 @@
       var item = findItem(upc);
       var qty = item ? item.on_hand : undefined;
       return (qty === undefined || qty === null) ? '—' : qty;
+    }
+
+    // PRD-005: "At location N, lasts ~N days". Days left comes from Pick List — Read
+    // (location_days_left, location_no_sales); this only rounds and words it.
+    function locationText(item) {
+      var qty = item.location_qty;
+      if (qty === undefined || qty === null) return 'At location —';
+      var text = 'At location ' + qty;
+      var days = item.location_days_left;
+      if (Number(qty) === 0) return text + ', empty';
+      if (item.location_no_sales === true) return text + ', no recent sales';
+      if (days === undefined || days === null) return text;
+      if (days > 30) return text + ', lasts 30+ days';
+      if (days < 1) return text + ', lasts &lt;1 day';
+      var d = Math.round(days);
+      return text + ', lasts ~' + d + (d === 1 ? ' day' : ' days');
+    }
+
+    // Keep each label with its number when the line wraps: spaces inside a part don't break.
+    function keepTogether(text) {
+      return text.replace(/ /g, '&nbsp;');
+    }
+
+    function itemLine(item, onHand, isSkipped) {
+      var loc = locationText(item).split(', ').map(keepTogether).join(', ');
+      var parts = [keepTogether('Bring ' + item.bring_qty), loc, keepTogether('In basement ' + onHand)];
+      if (isSkipped) parts.push('SKIPPED');
+      return parts.join('&nbsp;\u00b7 ');
     }
 
     function findItem(upc) {
@@ -396,7 +426,7 @@
           '<div class="item-info">' +
             '<div class="item-name' + stockoutClass + '">' + item.product_name + '</div>' +
             carryoverHtml +
-            '<div class="item-sub">Bring: ' + item.bring_qty + ' &nbsp;|&nbsp; On hand: ' + onHand + (isSkipped ? ' &nbsp;|&nbsp; SKIPPED' : '') + '</div>' +
+            '<div class="item-sub">' + itemLine(item, onHand, isSkipped) + '</div>' +
           '</div>' +
           (isPicked ? '<div class="item-check">✓</div>' : '') +
         '</div>';
