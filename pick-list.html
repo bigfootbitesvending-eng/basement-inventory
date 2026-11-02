@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Pick List (v1.7)</title>
+  <title>Pick List (v1.8)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -58,6 +58,7 @@
     .item-name.stockout { color: #C0392B; }
     .item-sub { font-size: 0.82rem; color: #777; margin-top: 2px; }
     .explainer { font-size: 0.8rem; color: #777; margin-top: 4px; }
+    .anchor-mark { color: #4472C4; font-weight: 700; font-size: 0.85rem; white-space: nowrap; }
     .item-check { font-size: 1.3rem; color: #548235; margin-left: 10px; flex-shrink: 0; }
 
     .item-expanded { padding: 14px; border-top: 1px solid #eee; background: #fafafa; }
@@ -271,7 +272,7 @@
       isToday = !parsedDate || isSameDate(parsedDate, today);
       
       document.getElementById('header').innerHTML =
-        '<h1>📋 ' + capitalize(locationParam) + ' Pick List (v1.7)</h1>' +
+        '<h1>📋 ' + capitalize(locationParam) + ' Pick List (v1.8)</h1>' +
         '<div class="meta" id="metaLine">' + dateParam + ' — ' + (modeParam === 'light' ? 'Light Stock' : 'Full Stock') + '</div>' +
         '<div class="explainer">Days left: what\'s at the location, at the last 30 days\' pace.</div>';
 
@@ -327,20 +328,13 @@
       return (qty === undefined || qty === null) ? '—' : qty;
     }
 
-    // PRD-005: "At location N, lasts ~N days". Days left comes from Pick List — Read
-    // (location_days_left, location_no_sales); this only rounds and words it.
+    // PRD-005: "At location N, lasts ~N days". The wording comes from Pick List — Read, which gets it from the
+    // shared Location Days Left sub-workflow; the page only places it (Change 2).
     function locationText(item) {
       var qty = item.location_qty;
       if (qty === undefined || qty === null) return 'At location —';
-      var text = 'At location ' + qty;
-      var days = item.location_days_left;
-      if (Number(qty) === 0) return text + ', empty';
-      if (item.location_no_sales === true) return text + ', no recent sales';
-      if (days === undefined || days === null) return text;
-      if (days > 30) return text + ', lasts 30+ days';
-      // Rounded up, as the restock email rounds days to stockout, so the two always agree.
-      var d = Math.ceil(days);
-      return text + ', lasts ~' + d + (d === 1 ? ' day' : ' days');
+      var phrase = item.location_days_phrase;
+      return 'At location ' + qty + (phrase ? ', ' + phrase.replace('<', '&lt;') : '');
     }
 
     // Keep each label with its number when the line wraps: spaces inside a part don't break.
@@ -424,7 +418,7 @@
       var collapsedHtml =
         '<div class="item-collapsed' + stockoutClass + '"' + skippedStyle + ' onclick="toggleExpand(\'' + item.upc + '\')">' +
           '<div class="item-info">' +
-            '<div class="item-name' + stockoutClass + '">' + item.product_name + '</div>' +
+            '<div class="item-name' + stockoutClass + '">' + item.product_name + (item.is_anchor === true ? ' <span class="anchor-mark">⚑ anchor</span>' : '') + '</div>' +
             carryoverHtml +
             '<div class="item-sub">' + itemLine(item, onHand, isSkipped) + '</div>' +
           '</div>' +
