@@ -222,7 +222,7 @@
       ).slice(0, 15);
       if (!matches.length) { suggestBox.hidden = true; return; }
       suggestBox.innerHTML = matches.map(p =>
-        '<div class="upc-suggestion" data-upc="' + escapeHtml(p.upc) + '">' + escapeHtml(p.product_name) +
+        '<div class="upc-suggestion" data-upc="' + escapeHtml(p.upc) + '">' + escapeHtml(p.product_name) + (p.retired_at ? ' (Retired)' : '') +
         ' <span class="sug-upc">' + escapeHtml(p.upc) + '</span></div>'
       ).join('');
       suggestBox.hidden = false;
@@ -476,7 +476,7 @@
     ).slice(0, 15);
     if (!matches.length) { suggestionsEl.hidden = true; return; }
     suggestionsEl.innerHTML = matches.map(p =>
-      '<div class="upc-suggestion" data-upc="' + escapeHtml(p.upc) + '">' + escapeHtml(p.product_name) +
+      '<div class="upc-suggestion" data-upc="' + escapeHtml(p.upc) + '">' + escapeHtml(p.product_name) + (p.retired_at ? ' (Retired)' : '') +
       ' <span class="sug-upc">' + escapeHtml(p.upc) + '</span></div>'
     ).join('');
     suggestionsEl.hidden = false;

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Basement Inventory v3.1.0</title>
+  <title>Basement Inventory v3.2.0</title>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script src="session.js"></script>
   <style>
@@ -214,6 +214,17 @@
     .message.error { background: #f8d7da; color: #721c24; }
     
     .hidden { display: none !important; }
+
+    /* Retire a product (PRD-003) */
+    #banner { position: sticky; top: 0; z-index: 10; }
+    .message.warning { background: #fff3cd; color: #664d03; }
+    .banner-actions { display: flex; gap: 10px; justify-content: center; margin-top: 10px; }
+    .banner-actions button { min-height: 44px; padding: 8px 14px; border: 1px solid currentColor; border-radius: 6px; background: #fff; color: inherit; font-weight: 600; cursor: pointer; }
+    .retired-marker { display: inline-block; padding: 2px 8px; border: 1px solid #555; border-radius: 4px; font-size: 0.8rem; font-weight: 700; color: #333; }
+    .retired-note { margin-top: 8px; font-size: 0.9rem; color: #333; }
+    .retired-toggle { width: 100%; min-height: 44px; margin-top: 15px; border: none; border-radius: 8px; background: #e0e0e0; font-weight: 600; cursor: pointer; }
+    .retired-explainer { margin: 6px 0 0; font-size: 0.85rem; color: #555; }
+    .replacement-option { display: block; width: 100%; min-height: 44px; padding: 8px; border: none; border-bottom: 1px solid #eee; background: #fff; text-align: left; cursor: pointer; }
     
     .loading {
       text-align: center;
@@ -261,10 +272,13 @@
 </head>
 <body>
   <div class="container">
-    <h1>📦 Basement Inventory v3.1.0</h1>
+    <h1>📦 Basement Inventory v3.2.0</h1>
 
     <!-- Session-level messages (start/end session, camera errors) -->
     <div id="message" class="message hidden"></div>
+
+    <!-- Retire and reactivate results and refusals (PRD-003) -->
+    <div id="banner" class="message hidden" role="status"></div>
 
     <!-- Session Panel — always visible, above tabs -->
     <div id="sessionPanel"></div>
@@ -303,6 +317,7 @@
           <div class="product-upc" id="productUpc">-</div>
           <div class="product-category" id="productCategory">-</div>
           <div class="product-qty">Current: <span id="productQty">0</span></div>
+          <div id="productRetired" class="retired-note hidden"></div>
         </div>
         
         <label>Quantity to add/remove:</label>
@@ -335,6 +350,22 @@
           Set Qty
         </button>
         
+        <!-- Retire and Reactivate: only in the detail view opened from the product list, never a scan result (PRD-003 Behavior 5) -->
+        <div id="retireControls" class="hidden">
+          <button id="retireBtn" class="btn btn-secondary" onclick="showRetireSection()" style="margin-top:10px;">Retire</button>
+          <button id="reactivateBtn" class="btn btn-secondary" onclick="sendRetire({ action: 'reactivate' })" style="margin-top:10px;">Reactivate</button>
+          <div id="retireSection" class="location-section hidden" style="margin-top:10px;">
+            <p style="margin:0 0 10px;font-size:0.9rem;">Retire means you no longer buy this. It stays findable when scanned, and sales still match. Reactivate undoes it. Example: retire Bounty 1 Pack, replaced by Double Roll.</p>
+            <label for="replacementInput">Replacement (optional):</label>
+            <input type="text" id="replacementInput" placeholder="Search by name or UPC" autocomplete="off" oninput="renderReplacementOptions()">
+            <div id="replacementOptions"></div>
+            <div class="action-buttons" style="margin-top:10px;">
+              <button id="confirmRetireBtn" class="btn btn-secondary" onclick="confirmRetire()">Retire</button>
+              <button id="cancelRetireBtn" class="btn btn-secondary" onclick="hideRetireSection()">Cancel</button>
+            </div>
+          </div>
+        </div>
+
         <button class="btn btn-secondary" onclick="resetScan()" style="margin-top:10px;">
           Scan Another
         </button>
@@ -421,6 +452,10 @@
     var allProducts = [];
     var locations = [];
     var audioContext = null;
+    var detailView = false;
+    var retireInFlight = false;
+    var selectedReplacementUpc = null;
+    var retiredGroupOpen = false;
 
     // ============================================
     // API HELPERS
@@ -469,8 +504,18 @@
         name: p.product_name,
         pickCategory: p.pick_category,
         taxCategory: p.tax_category,
-        qty: p.qty
+        qty: p.qty,
+        retiredAt: p.retired_at || null,
+        replacedByUpc: p.replaced_by_upc || null,
+        replacedByName: p.replaced_by_name || null,
+        replacedByRetired: p.replaced_by_retired === true
       };
+    }
+
+    function escapeHtml(value) {
+      return String(value === null || value === undefined ? '' : value)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
     // Pulls a usable message out of any of the error response shapes the
@@ -694,7 +739,8 @@
     // client-side cache loaded once at startup). This is what makes the
     // 404-driven new-product flow work, and it means on-hand qty is always
     // current instead of whatever was cached at page load.
-    function lookupUpc(upc) {
+    function lookupUpc(upc, fromList) {
+      detailView = fromList === true;
       showMessage('Looking up...', 'success');
       apiGetJson('/inventory/product', { upc: upc })
         .then(function(res) {
@@ -731,6 +777,7 @@
       document.getElementById('setQtySection').classList.add('hidden');
       document.getElementById('outLocation').value = '';
       hideProductMessage();
+      renderRetiredState(product);
       document.getElementById('productPanel').classList.remove('hidden');
       document.getElementById('newProductPanel').classList.add('hidden');
     }
@@ -902,7 +949,14 @@
       })
         .then(function(res) {
           var result = res.body;
-          if (result.success) {
+          if (result.code === 'retired') {
+            // A retired UPC offers Reactivate, never a duplicate row (PRD-003 Behavior 6).
+            playErrorBuzz();
+            hideMessage();
+            showBanner((result.product_name || currentProduct.upc) + ' is retired.', 'warning', [
+              { label: 'Reactivate', run: function() { sendRetire({ action: 'reactivate', upc: result.upc }); } }
+            ]);
+          } else if (result.success) {
             playSuccessBeep();
             showMessage('Added: ' + name, 'success');
             allProducts.push({
@@ -1035,31 +1089,53 @@
       container.innerHTML = html;
     }
     
-    function renderList(products) {
+    function renderList(products, openRetired) {
       var container = document.getElementById('inventoryList');
       if (products.length === 0) {
         container.innerHTML = '<div style="text-align:center;color:#666">No products found</div>';
         return;
       }
-      var html = '<div style="margin-top:10px">';
-      for (var i = 0; i < products.length; i++) {
-        var p = products[i];
-        html += '<div onclick="selectProductFromList(\'' + p.upc.replace(/'/g, "\\'") + '\')" style="padding:12px 0;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;cursor:pointer">' +
-          '<div>' +
-            '<div style="font-weight:600">' + p.name + '</div>' +
-            '<div style="font-size:0.85rem;color:#666">' + p.upc + ' <span class="category-badge">' + p.pickCategory + '</span></div>' +
-          '</div>' +
-          '<div style="font-size:1.2rem;font-weight:700;color:#548235">' + p.qty + '</div>' +
-        '</div>';
+      var active = products.filter(function(p) { return !p.retiredAt; });
+      var retired = products.filter(function(p) { return p.retiredAt; });
+      // Newest retire first; a tie goes by product name (PRD-003 Behavior 4).
+      retired.sort(function(a, b) {
+        return new Date(b.retiredAt) - new Date(a.retiredAt) || a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+      });
+      var html = '<div style="margin-top:10px">' + active.map(renderProductRow).join('') + '</div>';
+      // No retired products, no group (PRD-003 Behavior 10).
+      if (retired.length > 0) {
+        var open = retiredGroupOpen || openRetired === true;
+        html +=
+          '<button class="retired-toggle" aria-expanded="' + open + '" onclick="toggleRetiredGroup()">Retired (' + retired.length + ')</button>' +
+          '<p class="retired-explainer">No longer bought. Still found when scanned, and sales still match.</p>' +
+          '<div class="' + (open ? '' : 'hidden') + '">' + retired.map(renderProductRow).join('') + '</div>';
       }
-      html += '</div>';
       container.innerHTML = html;
+    }
+
+    function renderProductRow(p) {
+      var replacement = p.retiredAt && p.replacedByName
+        ? '<div style="font-size:0.85rem;color:#333">→ ' + escapeHtml(p.replacedByName) + (p.replacedByRetired ? ' <span class="retired-marker">Retired</span>' : '') + '</div>'
+        : '';
+      return '<div onclick="selectProductFromList(\'' + escapeHtml(p.upc) + '\')" style="padding:12px 0;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;cursor:pointer">' +
+        '<div>' +
+          '<div style="font-weight:600">' + escapeHtml(p.name) + (p.retiredAt ? ' <span class="retired-marker">Retired</span>' : '') + '</div>' +
+          '<div style="font-size:0.85rem;color:#666">' + escapeHtml(p.upc) + ' <span class="category-badge">' + escapeHtml(p.pickCategory) + '</span></div>' +
+          replacement +
+        '</div>' +
+        '<div style="font-size:1.2rem;font-weight:700;color:#548235">' + escapeHtml(p.qty) + '</div>' +
+      '</div>';
+    }
+
+    function toggleRetiredGroup() {
+      retiredGroupOpen = !retiredGroupOpen;
+      filterList();
     }
     
     function selectProductFromList(upc) {
       initAudio();
       showTab('scan');
-      lookupUpc(upc);
+      lookupUpc(upc, true);
     }
 
     function getUpcFromUrl() {
@@ -1077,7 +1153,167 @@
         var matchesCategory = !category || p.pickCategory === category;
         if (matchesSearch && matchesCategory) filtered.push(p);
       }
-      renderList(filtered);
+      // A search that matches a retired product opens the group (PRD-003 Behavior 4).
+      var openRetired = search.length > 0 && filtered.some(function(p) { return p.retiredAt; });
+      renderList(filtered, openRetired);
+    }
+
+    // ============================================
+    // RETIRE AND REACTIVATE (PRD-003)
+    // ============================================
+
+    function showBanner(text, type, actions) {
+      var el = document.getElementById('banner');
+      el.textContent = text;
+      el.className = 'message ' + type;
+      el.setAttribute('role', type === 'error' ? 'alert' : 'status');
+      if (actions && actions.length) {
+        var row = document.createElement('div');
+        row.className = 'banner-actions';
+        actions.forEach(function(a) {
+          var b = document.createElement('button');
+          b.textContent = a.label;
+          b.onclick = function() { hideBanner(); a.run(); };
+          row.appendChild(b);
+        });
+        el.appendChild(row);
+      }
+      window.scrollTo(0, 0);
+    }
+
+    function hideBanner() {
+      document.getElementById('banner').classList.add('hidden');
+    }
+
+    function renderRetiredState(product) {
+      var note = document.getElementById('productRetired');
+      note.textContent = '';
+      note.classList.toggle('hidden', !product.retiredAt);
+      if (product.retiredAt) {
+        var marker = document.createElement('span');
+        marker.className = 'retired-marker';
+        marker.textContent = 'Retired';
+        note.appendChild(marker);
+        if (product.replacedByName) {
+          note.appendChild(document.createTextNode(' Replaced by ' + product.replacedByName));
+          if (product.replacedByRetired) {
+            var own = document.createElement('span');
+            own.className = 'retired-marker';
+            own.textContent = 'Retired';
+            note.appendChild(document.createTextNode(' '));
+            note.appendChild(own);
+          }
+        }
+      }
+      document.getElementById('retireControls').classList.toggle('hidden', !detailView);
+      document.getElementById('retireBtn').classList.toggle('hidden', !!product.retiredAt);
+      document.getElementById('reactivateBtn').classList.toggle('hidden', !product.retiredAt);
+      hideRetireSection();
+    }
+
+    function showRetireSection() {
+      selectedReplacementUpc = null;
+      document.getElementById('replacementInput').value = '';
+      document.getElementById('replacementOptions').textContent = '';
+      document.getElementById('retireSection').classList.remove('hidden');
+      if (allProducts.length === 0) loadInventory();
+    }
+
+    function hideRetireSection() {
+      document.getElementById('retireSection').classList.add('hidden');
+    }
+
+    // Active products only, and never the product itself (PRD-003 Behavior 2).
+    function renderReplacementOptions() {
+      selectedReplacementUpc = null;
+      var q = document.getElementById('replacementInput').value.trim().toLowerCase();
+      var box = document.getElementById('replacementOptions');
+      box.textContent = '';
+      if (q.length < 2) return;
+      allProducts.filter(function(p) {
+        return !p.retiredAt && p.upc !== currentProduct.upc &&
+          (p.name.toLowerCase().indexOf(q) >= 0 || p.upc.indexOf(q) >= 0);
+      }).slice(0, 10).forEach(function(p) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'replacement-option';
+        b.textContent = p.name + ' · ' + p.upc;
+        b.onclick = function() {
+          selectedReplacementUpc = p.upc;
+          document.getElementById('replacementInput').value = p.name;
+          box.textContent = '';
+        };
+        box.appendChild(b);
+      });
+    }
+
+    function confirmRetire() {
+      if (document.getElementById('replacementInput').value.trim() && !selectedReplacementUpc) {
+        showBanner('Pick a replacement from the list, or clear the box.', 'error');
+        return;
+      }
+      sendRetire({ action: 'retire', replaced_by_upc: selectedReplacementUpc });
+    }
+
+    function setRetireBusy(busy) {
+      retireInFlight = busy;
+      ['retireBtn', 'reactivateBtn', 'confirmRetireBtn', 'cancelRetireBtn'].forEach(function(id) {
+        document.getElementById(id).disabled = busy;
+      });
+    }
+
+    function sendRetire(request) {
+      if (retireInFlight) return;
+      setRetireBusy(true);
+      var payload = { action: request.action, upc: request.upc || currentProduct.upc };
+      if (request.replaced_by_upc) payload.replaced_by_upc = request.replaced_by_upc;
+      if (request.confirm_on_hand) payload.confirm_on_hand = true;
+      apiPostJson('/inventory/retire', payload)
+        .then(function(res) {
+          setRetireBusy(false);
+          var body = res.body || {};
+          if (body.code === 'on_hand') {
+            showBanner(body.product_name + ' has ' + body.on_hand + ' on hand. Retire anyway?', 'warning', [
+              { label: 'Retire anyway', run: function() { sendRetire({ action: 'retire', upc: payload.upc, replaced_by_upc: payload.replaced_by_upc, confirm_on_hand: true }); } },
+              { label: 'Cancel', run: function() {} }
+            ]);
+            return;
+          }
+          if (!res.ok || !body.success) {
+            playErrorBuzz();
+            showBanner(errorMessage(body, 'Could not save (' + res.status + '). Nothing changed.'), 'error');
+            return;
+          }
+          applyRetireResult(body);
+        })
+        .catch(function(err) {
+          setRetireBusy(false);
+          playErrorBuzz();
+          showBanner('Could not save: ' + err.message + '. Check the list before trying again.', 'error');
+        });
+    }
+
+    function applyRetireResult(body) {
+      var product = mapProduct(body);
+      var known = false;
+      allProducts = allProducts.map(function(p) {
+        if (p.upc !== product.upc) return p;
+        known = true;
+        return product;
+      });
+      if (!known) allProducts.push(product);
+      filterList();
+      if (currentProduct && currentProduct.upc === product.upc) showProductPanel(product);
+      playSuccessBeep();
+      if (body.action === 'reactivate') {
+        showBanner(body.noop ? product.name + ' is already active.' : product.name + ' is active again.', 'success');
+        return;
+      }
+      var text = (body.noop ? product.name + ' is already retired.' : 'Retired ' + product.name + '.') +
+        (product.replacedByName ? ' Replaced by ' + product.replacedByName + '.' : '');
+      showBanner(text, 'success', [
+        { label: 'Reactivate', run: function() { sendRetire({ action: 'reactivate', upc: product.upc }); } }
+      ]);
     }
 
     // Top bar — session events, camera errors, new product flow
