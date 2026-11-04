@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Basement Inventory v3.2.1</title>
+  <title>Basement Inventory v3.2.2</title>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script src="session.js"></script>
   <style>
@@ -215,6 +215,15 @@
     
     .hidden { display: none !important; }
 
+    .breadcrumb { display: inline-block; font-size: 0.8rem; color: #666; text-decoration: none; margin-bottom: 8px; }
+    .breadcrumb:hover { color: #4472C4; }
+    .breadcrumb:focus-visible { outline: 2px solid #4472C4; outline-offset: 2px; }
+
+    .search-wrap { position: relative; }
+    .search-wrap input { padding-right: 44px; }
+    .search-clear { position: absolute; right: 0; top: 0; bottom: 10px; width: 44px; min-height: 44px; border: none; background: none; color: #C0392B; font-size: 1.4rem; font-weight: 700; line-height: 1; cursor: pointer; }
+    .search-clear:focus-visible { outline: 2px solid #4472C4; outline-offset: -2px; }
+
     /* Retire a product (PRD-003) */
     #banner { position: sticky; top: 0; z-index: 10; }
     .message.warning { background: #fff3cd; color: #664d03; }
@@ -272,7 +281,8 @@
 </head>
 <body>
   <div class="container">
-    <h1>📦 Basement Inventory v3.2.1</h1>
+    <a class="breadcrumb" href="/">← Operator Tools</a>
+    <h1>📦 Basement Inventory v3.2.2</h1>
 
     <!-- Session-level messages (start/end session, camera errors) -->
     <div id="message" class="message hidden"></div>
@@ -424,7 +434,10 @@
     <!-- Inventory List Tab -->
     <div id="listTab" class="hidden">
       <div class="card">
-        <input type="text" id="searchBox" placeholder="Search products..." oninput="filterList()">
+        <div class="search-wrap">
+          <input type="text" id="searchBox" placeholder="Search products..." oninput="filterList()">
+          <button type="button" id="searchClear" class="search-clear hidden" aria-label="Clear search" onclick="clearSearch()">×</button>
+        </div>
         <select id="filterCategory" onchange="filterList()" style="margin-top:5px;">
           <option value="">All Categories</option>
           <option value="Drinks">Drinks</option>
@@ -1148,8 +1161,16 @@
       return params.get('upc');
     }
     
+    function clearSearch() {
+      var box = document.getElementById('searchBox');
+      box.value = '';
+      filterList();
+      box.focus();
+    }
+
     function filterList() {
       var search = document.getElementById('searchBox').value.toLowerCase();
+      document.getElementById('searchClear').classList.toggle('hidden', search.length === 0);
       var category = document.getElementById('filterCategory').value;
       var filtered = [];
       for (var i = 0; i < allProducts.length; i++) {
