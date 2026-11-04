@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Basement Inventory v3.2.0</title>
+  <title>Basement Inventory v3.2.1</title>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script src="session.js"></script>
   <style>
@@ -272,7 +272,7 @@
 </head>
 <body>
   <div class="container">
-    <h1>📦 Basement Inventory v3.2.0</h1>
+    <h1>📦 Basement Inventory v3.2.1</h1>
 
     <!-- Session-level messages (start/end session, camera errors) -->
     <div id="message" class="message hidden"></div>
@@ -456,6 +456,7 @@
     var retireInFlight = false;
     var selectedReplacementUpc = null;
     var retiredGroupOpen = false;
+    var bannerTimer = null;
 
     // ============================================
     // API HELPERS
@@ -681,6 +682,7 @@
     }
     
     function showTab(tab) {
+      hideBanner();
       document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
       document.querySelector('.tab:nth-child(' + (tab === 'scan' ? 1 : 2) + ')').classList.add('active');
       document.getElementById('scanTab').classList.toggle('hidden', tab !== 'scan');
@@ -741,6 +743,9 @@
     // current instead of whatever was cached at page load.
     function lookupUpc(upc, fromList) {
       detailView = fromList === true;
+      hideBanner();
+      document.getElementById('productPanel').classList.add('hidden');
+      document.getElementById('newProductPanel').classList.add('hidden');
       showMessage('Looking up...', 'success');
       apiGetJson('/inventory/product', { upc: upc })
         .then(function(res) {
@@ -1164,6 +1169,8 @@
 
     function showBanner(text, type, actions) {
       var el = document.getElementById('banner');
+      clearTimeout(bannerTimer);
+      if (type === 'success') bannerTimer = setTimeout(hideBanner, 5000);
       el.textContent = text;
       el.className = 'message ' + type;
       el.setAttribute('role', type === 'error' ? 'alert' : 'status');
@@ -1182,6 +1189,7 @@
     }
 
     function hideBanner() {
+      clearTimeout(bannerTimer);
       document.getElementById('banner').classList.add('hidden');
     }
 
@@ -1311,9 +1319,7 @@
       }
       var text = (body.noop ? product.name + ' is already retired.' : 'Retired ' + product.name + '.') +
         (product.replacedByName ? ' Replaced by ' + product.replacedByName + '.' : '');
-      showBanner(text, 'success', [
-        { label: 'Reactivate', run: function() { sendRetire({ action: 'reactivate', upc: product.upc }); } }
-      ]);
+      showBanner(text, 'success');
     }
 
     // Top bar — session events, camera errors, new product flow
