@@ -65,7 +65,7 @@
   .status-chip {
     font-family: var(--font-body); font-weight: 600; font-size: 0.8rem;
     background: #fff; border: 1px solid var(--rule); border-radius: 999px;
-    padding: 0.4rem 0.85rem; color: var(--ink-soft); cursor: pointer;
+    padding: 0.4rem 0.85rem; min-height: 44px; color: var(--ink-soft); cursor: pointer;
   }
   .status-chip:focus-visible { outline: 2px solid var(--ledger-green); outline-offset: 2px; }
   .status-chip[aria-pressed="true"][data-status="critical"] { background: var(--status-error-soft); border-color: var(--status-error); color: var(--ink); }
@@ -74,12 +74,11 @@
   .status-chip[aria-pressed="true"][data-status="low_sales"] { background: color-mix(in srgb, var(--status-not-started) 22%, var(--paper)); border-color: var(--status-not-started); color: var(--ink); }
   .status-chip[aria-pressed="true"][data-status="reorder_off"] { background: color-mix(in srgb, var(--status-off) 16%, var(--paper)); border-color: var(--status-off); color: var(--ink); }
 
-  .chip-bar { display: flex; gap: 0.5rem; overflow-x: auto; padding-bottom: 0.5rem; margin-bottom: 1rem; }
-  .chip-bar::-webkit-scrollbar { display: none; }
+  .chip-bar { display: flex; gap: 0.5rem; flex-wrap: wrap; padding-bottom: 0.5rem; margin-bottom: 1rem; }
   .chip {
     flex: 0 0 auto; font-family: var(--font-body); font-weight: 600; font-size: 0.82rem;
     background: #fff; border: 1px solid var(--rule); border-radius: 999px;
-    padding: 0.45rem 0.95rem; color: var(--ink-soft); cursor: pointer; white-space: nowrap;
+    padding: 0.45rem 0.95rem; min-height: 44px; color: var(--ink-soft); cursor: pointer; white-space: nowrap;
   }
   .chip[aria-pressed="true"] { background: var(--ledger-green); border-color: var(--ledger-green); color: #fff; }
   .chip:focus-visible { outline: 2px solid var(--ledger-green); outline-offset: 2px; }
