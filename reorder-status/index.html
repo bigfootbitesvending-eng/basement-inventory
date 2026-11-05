@@ -14,6 +14,9 @@
      win, regardless of what a class declares. */
   [hidden] { display: none !important; }
 
+  /* Don't reorder has its own color: the shared palette has no slate, and Low sales already uses the warm grey. */
+  :root { --status-off: #4A6A8A; }
+
   main { max-width: 680px; margin: 0 auto; padding: 2.5rem 1.1rem 4rem; }
 
   header { margin-bottom: 1.25rem; border-bottom: 2px solid var(--ink); padding-bottom: 1rem; }
@@ -68,7 +71,8 @@
   .status-chip[aria-pressed="true"][data-status="critical"] { background: var(--status-error-soft); border-color: var(--status-error); color: var(--ink); }
   .status-chip[aria-pressed="true"][data-status="warning"] { background: var(--status-draft-soft); border-color: var(--status-draft); color: var(--ink); }
   .status-chip[aria-pressed="true"][data-status="fine"] { background: var(--ledger-green-soft); border-color: var(--ledger-green); color: var(--ink); }
-  .status-chip[aria-pressed="true"][data-status="not_tracked"] { background: color-mix(in srgb, var(--status-not-started) 22%, var(--paper)); border-color: var(--status-not-started); color: var(--ink); }
+  .status-chip[aria-pressed="true"][data-status="low_sales"] { background: color-mix(in srgb, var(--status-not-started) 22%, var(--paper)); border-color: var(--status-not-started); color: var(--ink); }
+  .status-chip[aria-pressed="true"][data-status="reorder_off"] { background: color-mix(in srgb, var(--status-off) 16%, var(--paper)); border-color: var(--status-off); color: var(--ink); }
 
   .chip-bar { display: flex; gap: 0.5rem; overflow-x: auto; padding-bottom: 0.5rem; margin-bottom: 1rem; }
   .chip-bar::-webkit-scrollbar { display: none; }
@@ -88,7 +92,8 @@
   .row-card[data-status="critical"] { border-left-color: var(--status-error); }
   .row-card[data-status="warning"] { border-left-color: var(--status-draft); }
   .row-card[data-status="fine"] { border-left-color: var(--ledger-green); }
-  .row-card[data-status="not_tracked"] { border-left-color: var(--status-not-started); }
+  .row-card[data-status="low_sales"] { border-left-color: var(--status-not-started); }
+  .row-card[data-status="reorder_off"] { border-left-color: var(--status-off); }
 
   .row-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; }
   .row-name { font-family: var(--font-display); font-weight: 700; font-size: 1rem; line-height: 1.25; }
@@ -105,8 +110,10 @@
   .badge[data-status="warning"] .dot { background: var(--status-draft); }
   .badge[data-status="fine"] { background: var(--ledger-green-soft); }
   .badge[data-status="fine"] .dot { background: var(--ledger-green); }
-  .badge[data-status="not_tracked"] { background: color-mix(in srgb, var(--status-not-started) 22%, var(--paper)); }
-  .badge[data-status="not_tracked"] .dot { background: var(--status-not-started); }
+  .badge[data-status="low_sales"] { background: color-mix(in srgb, var(--status-not-started) 22%, var(--paper)); }
+  .badge[data-status="low_sales"] .dot { background: var(--status-not-started); }
+  .badge[data-status="reorder_off"] { background: color-mix(in srgb, var(--status-off) 16%, var(--paper)); }
+  .badge[data-status="reorder_off"] .dot { background: var(--status-off); }
 
   .row-stats { display: flex; flex-wrap: wrap; gap: 0.6rem 1.2rem; margin-top: 0.65rem; }
   .stat { min-width: 4.5rem; }
@@ -147,6 +154,20 @@
   }
   .needs-row-name { font-family: var(--font-display); font-weight: 700; font-size: 0.95rem; margin-bottom: 0.5rem; }
   .trend-note { color: var(--ink-soft); font-weight: 500; font-size: 0.78rem; }
+
+  .reason-line { color: var(--ink-soft); font-size: 0.8rem; margin-top: 0.5rem; }
+
+  .jump-line { margin: -0.25rem 0 1rem; font-size: 0.88rem; }
+  .jump-line a { color: var(--ledger-green); font-weight: 600; padding: 0.4rem 0; display: inline-block; }
+  .jump-line a:focus-visible { outline: 2px solid var(--ledger-green); outline-offset: 2px; }
+
+  .buy-group { margin-top: 1.75rem; border-top: 2px solid var(--ink); }
+  .buy-group summary {
+    font-family: var(--font-display); font-weight: 700; font-size: 1.15rem;
+    padding: 0.85rem 0; cursor: pointer;
+  }
+  .buy-group summary:focus-visible { outline: 2px solid var(--ledger-green); outline-offset: 2px; }
+  .buy-group-note { color: var(--ink-soft); font-size: 0.82rem; margin: 0 0 0.25rem; }
 </style>
 </head>
 <body>
@@ -166,6 +187,8 @@
     <button class="view-btn" data-view="category" aria-pressed="false" type="button">By Category</button>
   </div>
 
+  <div class="jump-line" id="jumpLine" hidden><a href="#buy-as-needed" id="jumpLink"></a></div>
+
   <div class="filter-wrap" id="filterWrap" hidden>
     <input type="text" class="filter-input" id="categoryFilter" placeholder='Filter by name (e.g. "jerry")'>
     <button class="filter-clear" id="filterClear" type="button" aria-label="Clear filter" hidden>×</button>
@@ -177,7 +200,8 @@
     <button class="status-chip" data-status="critical" aria-pressed="false" type="button">Critical</button>
     <button class="status-chip" data-status="warning" aria-pressed="false" type="button">Warning</button>
     <button class="status-chip" data-status="fine" aria-pressed="false" type="button">Fine</button>
-    <button class="status-chip" data-status="not_tracked" aria-pressed="false" type="button">Not tracked</button>
+    <button class="status-chip" data-status="low_sales" aria-pressed="false" type="button">Low sales</button>
+    <button class="status-chip" data-status="reorder_off" aria-pressed="false" type="button">Don't reorder</button>
   </div>
 
   <div class="row-list" id="rowList"></div>
@@ -191,7 +215,7 @@
   // pattern as Tax & Revenue Share Obligations and the other CRUD tools.
   var API_BASE = 'https://randysmith42.app.n8n.cloud/webhook/reorder-signal';
 
-  var state = { rows: [], view: 'needs_attention', category: null, filterText: '', statusFilters: [], loading: false, error: null, generatedAt: null };
+  var state = { rows: [], view: 'needs_attention', category: null, filterText: '', statusFilters: [], loading: false, error: null, generatedAt: null, groupOpen: false, hashHandled: false };
   var BUCKET_CAP_DAYS = 10;
 
   var els = {
@@ -203,7 +227,9 @@
     filterClear: document.getElementById('filterClear'),
     statusFilterBar: document.getElementById('statusFilterBar'),
     chipBar: document.getElementById('chipBar'),
-    rowList: document.getElementById('rowList')
+    rowList: document.getElementById('rowList'),
+    jumpLine: document.getElementById('jumpLine'),
+    jumpLink: document.getElementById('jumpLink')
   };
 
   function statusLabel(status) {
@@ -211,7 +237,8 @@
       case 'critical': return 'Critical';
       case 'warning': return 'Warning';
       case 'fine': return 'Fine';
-      case 'not_tracked': return 'Not tracked';
+      case 'low_sales': return 'Low sales';
+      case 'reorder_off': return 'Don\'t reorder';
       default: return status;
     }
   }
@@ -224,6 +251,32 @@
     var div = document.createElement('div');
     div.textContent = str == null ? '' : String(str);
     return div.innerHTML;
+  }
+
+  // "Oct 29" in Central time; the year shows when it is not the current year; '' when the value is unreadable.
+  function formatSetDate(value) {
+    var d = new Date(value);
+    if (!value || isNaN(d.getTime())) return '';
+    var central = { timeZone: 'America/Chicago' };
+    var thisYear = new Date().toLocaleDateString('en-US', { timeZone: 'America/Chicago', year: 'numeric' });
+    var opts = { timeZone: central.timeZone, month: 'short', day: 'numeric' };
+    if (d.toLocaleDateString('en-US', { timeZone: 'America/Chicago', year: 'numeric' }) !== thisYear) opts.year = 'numeric';
+    return d.toLocaleDateString('en-US', opts);
+  }
+
+  // Why a skipped card is not on the planned list: "Don't reorder, set Oct 29", "3 sales in 30 days", "1 sale in 30 days".
+  function reasonLineHTML(row) {
+    var text = '';
+    if (row.status === 'reorder_off') {
+      var when = formatSetDate(row.reorder_off_at);
+      text = when ? 'Don\'t reorder, set ' + when : 'Don\'t reorder';
+    } else if (row.status === 'low_sales') {
+      var sold = row.sold_in_last_30;
+      if (sold !== null && sold !== undefined && sold !== '' && isFinite(Number(sold))) {
+        text = Number(sold) + (Number(sold) === 1 ? ' sale' : ' sales') + ' in 30 days';
+      }
+    }
+    return text ? '<div class="reason-line">' + escapeHtml(text) + '</div>' : '';
   }
 
   function trendInfoHTML(row) {
@@ -261,6 +314,7 @@
           '</div>' +
           '<span class="badge" data-status="' + row.status + '"><span class="dot"></span>' + statusLabel(row.status) + '</span>' +
         '</div>' +
+        reasonLineHTML(row) +
         '<div class="row-stats">' +
           '<div class="stat"><span class="stat-label">Stock</span><span class="stat-value">' + row.stock_at_last_run + '</span></div>' +
           '<div class="stat"><span class="stat-label">Runway</span><span class="stat-value">' + runway + '</span></div>' +
@@ -282,7 +336,9 @@
     return Object.keys(groupsMap).sort().map(function (cat) {
       return {
         category: cat,
-        items: groupsMap[cat].sort(function (a, b) { return a.product_name.localeCompare(b.product_name); })
+        items: groupsMap[cat].sort(function (a, b) {
+          return a.product_name.localeCompare(b.product_name) || String(a.product_id).localeCompare(String(b.product_id));
+        })
       };
     });
   }
@@ -316,8 +372,10 @@
 
   function renderNeedsAttention() {
     var flagged = state.rows.filter(function (r) { return r.reorder_flag === true; });
+    var skipped = skippedRows();
     if (!flagged.length) {
-      els.rowList.innerHTML = '<div class="empty-state">Nothing\'s below its reorder floor right now.</div>';
+      els.rowList.innerHTML = '<div class="empty-state">Nothing to plan a trip for right now.</div>' + buyAsNeededHTML(skipped);
+      wireBuyGroup();
       return;
     }
 
@@ -355,7 +413,48 @@
       html += '<h2 class="bucket-header">Timing unclear</h2>' + renderBucketGroups(unknownTiming);
     }
 
-    els.rowList.innerHTML = html;
+    els.rowList.innerHTML = html + buyAsNeededHTML(skipped);
+    wireBuyGroup();
+  }
+
+  // Buy As Needed: the products the email lists in its bottom section. skip_reason is set by the calculator,
+  // so the page has no membership rule of its own.
+  function skippedRows() {
+    return state.rows.filter(function (r) { return !!r.skip_reason; });
+  }
+
+  function buyAsNeededHTML(rows) {
+    if (!rows.length) return '';
+    var body = groupByCategory(rows).map(function (group) {
+      return '<h3 class="category-subheader">' + escapeHtml(group.category) + '</h3>' +
+        '<div class="row-list">' + group.items.map(rowCardHTML).join('') + '</div>';
+    }).join('');
+    return '<details class="buy-group" id="buy-as-needed"' + (state.groupOpen ? ' open' : '') + '>' +
+      '<summary>Buy As Needed (' + rows.length + ')</summary>' +
+      '<p class="buy-group-note">Not on the planned shopping list. Buy these on a convenient stop before they run out.</p>' +
+      body +
+    '</details>';
+  }
+
+  function openBuyGroup() {
+    var group = document.getElementById('buy-as-needed');
+    if (!group) return;
+    group.open = true;
+    state.groupOpen = true;
+    group.scrollIntoView({ block: 'start' });
+    var summary = group.querySelector('summary');
+    if (summary) summary.focus();
+  }
+
+  // Keeps the group's open state across redraws, and opens it once when the page is reached by the email's link.
+  function wireBuyGroup() {
+    var group = document.getElementById('buy-as-needed');
+    if (!group) return;
+    group.addEventListener('toggle', function () { state.groupOpen = group.open; });
+    if (window.location.hash === '#buy-as-needed' && !state.hashHandled) {
+      state.hashHandled = true;
+      openBuyGroup();
+    }
   }
 
   function renderChips() {
@@ -378,6 +477,11 @@
     } else if (state.loading) {
       els.asOf.textContent = 'Loading…';
     }
+
+    // "N more to buy as needed" under the view toggle: Needs Attention only, and only when the group has members.
+    var buyCount = (state.error || state.view !== 'needs_attention') ? 0 : skippedRows().length;
+    els.jumpLine.hidden = buyCount === 0;
+    if (buyCount) els.jumpLink.textContent = buyCount + ' more to buy as needed';
 
     if (state.error) {
       els.filterWrap.hidden = true;
@@ -425,7 +529,11 @@
         return res.json();
       })
       .then(function (data) {
-        state.rows = data.rows || [];
+        // The calculator used to send "not_tracked" for what is now "low_sales"; read either, so deploy order doesn't matter.
+        state.rows = (data.rows || []).map(function (r) {
+          if (r.status === 'not_tracked') r.status = 'low_sales';
+          return r;
+        });
         state.generatedAt = data.generated_at || null;
       })
       .catch(function (err) {
@@ -438,6 +546,11 @@
   }
 
   els.refreshBtn.addEventListener('click', loadData);
+
+  els.jumpLink.addEventListener('click', function (e) {
+    e.preventDefault();
+    openBuyGroup();
+  });
 
   els.viewBtns.forEach(function (btn) {
     btn.addEventListener('click', function () {
