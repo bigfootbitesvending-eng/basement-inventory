@@ -168,10 +168,52 @@
   }
   .buy-group summary:focus-visible { outline: 2px solid var(--ledger-green); outline-offset: 2px; }
   .buy-group-note { color: var(--ink-soft); font-size: 0.82rem; margin: 0 0 0.25rem; }
+
+  /* A long name wraps; it never covers the switch or the badge. */
+  .row-top > div:first-child { min-width: 0; flex: 1 1 auto; }
+  .row-name, .needs-row-name { overflow-wrap: anywhere; }
+
+  .explain-line { color: var(--ink-soft); font-size: 0.82rem; margin: -0.25rem 0 0.75rem; }
+
+  /* The confirmation banner: sticky at the top so it is in view wherever the switch was. */
+  .banner-region { position: sticky; top: 0; z-index: 5; }
+  .banner {
+    display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin: 0 0 1rem; padding: 0.6rem 0.9rem;
+    border-radius: 6px; font-size: 0.9rem; background: var(--ledger-green-soft); border: 1px solid var(--ledger-green); color: var(--ink);
+  }
+  .banner[data-kind="error"] { background: var(--status-error-soft); border-color: var(--status-error); }
+  .banner-text { flex: 1 1 12rem; min-width: 0; overflow-wrap: anywhere; }
+  .banner button {
+    font-family: var(--font-body); font-weight: 600; font-size: 0.88rem; min-height: 44px; min-width: 44px; padding: 0 0.8rem;
+    background: #fff; border: 1px solid var(--rule); border-radius: 6px; color: var(--ledger-green); cursor: pointer;
+  }
+  .banner button[aria-disabled="true"] { opacity: 0.55; cursor: default; }
+  .banner button:focus-visible { outline: 2px solid var(--ledger-green); outline-offset: 2px; }
+
+  /* The Don't reorder switch: the whole button is at least 44 by 44 px; the drawn track is smaller. */
+  .switch-row { display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem 0.6rem; margin-top: 0.5rem; }
+  .switch-label { font-size: 0.85rem; font-weight: 600; }
+  .switch { min-width: 44px; min-height: 44px; padding: 0; background: none; border: none; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+  .switch .track { position: relative; width: 40px; height: 22px; border-radius: 999px; background: var(--rule); border: 1px solid var(--status-not-started); display: inline-block; }
+  .switch .knob { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 1px solid var(--status-not-started); }
+  .switch[aria-checked="true"] .track { background: var(--status-off); border-color: var(--status-off); }
+  .switch[aria-checked="true"] .knob { left: 20px; border-color: var(--status-off); }
+  .switch[aria-disabled="true"] { cursor: default; opacity: 0.55; }
+  .switch:focus-visible { outline: 2px solid var(--ledger-green); outline-offset: 2px; border-radius: 6px; }
+  .switch-state { font-size: 0.82rem; color: var(--ink-soft); min-width: 3.5rem; }
+  .switch-err { font-size: 0.82rem; color: var(--status-error); font-weight: 600; }
 </style>
 </head>
 <body>
 <main>
+  <div class="banner-region" id="bannerRegion" role="status" aria-live="polite">
+    <div class="banner" id="banner" data-kind="ok" hidden>
+      <span class="banner-text" id="bannerText"></span>
+      <button type="button" id="bannerUndo" hidden>Undo</button>
+      <button type="button" id="bannerClose" aria-label="Dismiss this message">Dismiss</button>
+    </div>
+  </div>
+
   <header>
     <a class="breadcrumb" href="/">← Operator Tools</a>
     <h1>Reorder Status</h1>
@@ -186,6 +228,8 @@
     <button class="view-btn" data-view="needs_attention" aria-pressed="true" type="button">Needs Attention</button>
     <button class="view-btn" data-view="category" aria-pressed="false" type="button">By Category</button>
   </div>
+
+  <p class="explain-line">Keeps this off the shopping list. It still shows at the bottom when it runs low.</p>
 
   <div class="jump-line" id="jumpLine" hidden><a href="#buy-as-needed" id="jumpLink"></a></div>
 
@@ -215,7 +259,9 @@
   // pattern as Tax & Revenue Share Obligations and the other CRUD tools.
   var API_BASE = 'https://randysmith42.app.n8n.cloud/webhook/reorder-signal';
 
-  var state = { rows: [], view: 'needs_attention', category: null, filterText: '', statusFilters: [], loading: false, error: null, generatedAt: null, groupOpen: false, hashHandled: false };
+  var state = { rows: [], view: 'needs_attention', category: null, filterText: '', statusFilters: [], loading: false, error: null, generatedAt: null, groupOpen: false, hashHandled: false, saving: false, undo: null };
+  // The Don't reorder switch calls the endpoint beside this one, behind the same key.
+  var SWITCH_URL = API_BASE.replace('/reorder-signal', '/inventory/set-reorder-off');
   var BUCKET_CAP_DAYS = 10;
 
   var els = {
@@ -229,7 +275,11 @@
     chipBar: document.getElementById('chipBar'),
     rowList: document.getElementById('rowList'),
     jumpLine: document.getElementById('jumpLine'),
-    jumpLink: document.getElementById('jumpLink')
+    jumpLink: document.getElementById('jumpLink'),
+    banner: document.getElementById('banner'),
+    bannerText: document.getElementById('bannerText'),
+    bannerUndo: document.getElementById('bannerUndo'),
+    bannerClose: document.getElementById('bannerClose')
   };
 
   function statusLabel(status) {
@@ -253,19 +303,33 @@
     return div.innerHTML;
   }
 
+  // For a value inside a double-quoted HTML attribute.
+  function escapeAttr(str) {
+    return escapeHtml(str).replace(/"/g, '&quot;');
+  }
+
   // "Oct 29" in Central time; the year shows when it is not the current year; '' when the value is unreadable.
   function formatSetDate(value) {
     var d = new Date(value);
     if (!value || isNaN(d.getTime())) return '';
-    var central = { timeZone: 'America/Chicago' };
     var thisYear = new Date().toLocaleDateString('en-US', { timeZone: 'America/Chicago', year: 'numeric' });
-    var opts = { timeZone: central.timeZone, month: 'short', day: 'numeric' };
+    var opts = { timeZone: 'America/Chicago', month: 'short', day: 'numeric' };
     if (d.toLocaleDateString('en-US', { timeZone: 'America/Chicago', year: 'numeric' }) !== thisYear) opts.year = 'numeric';
     return d.toLocaleDateString('en-US', opts);
   }
 
+  // What a card says after its switch was changed on this page, until the next Refresh moves it.
+  function movedText(row) {
+    if (row.reorder_off) {
+      var when = formatSetDate(row.reorder_off_at);
+      return (when ? 'Don\'t reorder, set ' + when : 'Don\'t reorder') + '. Moves on Refresh.';
+    }
+    return 'Back on the shopping list. Moves on Refresh.';
+  }
+
   // Why a skipped card is not on the planned list: "Don't reorder, set Oct 29", "3 sales in 30 days", "1 sale in 30 days".
-  function reasonLineHTML(row) {
+  function reasonText(row) {
+    if (row.moved) return movedText(row);
     var text = '';
     if (row.status === 'reorder_off') {
       var when = formatSetDate(row.reorder_off_at);
@@ -276,7 +340,26 @@
         text = Number(sold) + (Number(sold) === 1 ? ' sale' : ' sales') + ' in 30 days';
       }
     }
+    return text;
+  }
+
+  function reasonLineHTML(row) {
+    var text = reasonText(row);
     return text ? '<div class="reason-line">' + escapeHtml(text) + '</div>' : '';
+  }
+
+  // The Don't reorder switch (PRD-004 Rollout 5b). Announced as "Don't reorder, <name>, switch, on/off".
+  function switchHTML(row) {
+    var on = row.reorder_off === true;
+    return (
+      '<div class="switch-row">' +
+        '<span class="switch-label">Don\'t reorder</span>' +
+        '<button class="switch" type="button" role="switch" aria-checked="' + on + '" data-upc="' + escapeAttr(row.product_id) + '" ' +
+          'aria-label="Don\'t reorder, ' + escapeAttr(row.product_name) + '"><span class="track"><span class="knob"></span></span></button>' +
+        '<span class="switch-state">' + (on ? 'On' : 'Off') + '</span>' +
+        '<span class="switch-err" hidden>Couldn\'t save</span>' +
+      '</div>'
+    );
   }
 
   function trendInfoHTML(row) {
@@ -306,7 +389,7 @@
       ? Math.floor(row.days_runway) + 'd of ' + row.reorder_floor_days + 'd floor'
       : '—';
     return (
-      '<div class="row-card" data-status="' + row.status + '">' +
+      '<div class="row-card" data-status="' + row.status + '" data-upc="' + escapeAttr(row.product_id) + '">' +
         '<div class="row-top">' +
           '<div>' +
             '<div class="row-name">' + escapeHtml(row.product_name) + '</div>' +
@@ -321,6 +404,7 @@
           '<div class="stat"><span class="stat-label">Suggested</span><span class="stat-value">' + row.suggested_reorder_qty + '</span></div>' +
           '<div class="stat"><span class="stat-label">Rate (30d)</span><span class="stat-value">' + formatRate(row.daily_rate_30d) + '</span></div>' +
         '</div>' +
+        switchHTML(row) +
         trendInfoHTML(row) +
       '</div>'
     );
@@ -349,7 +433,7 @@
       daysLeftText += ' <span class="trend-note">(30d trend)</span>';
     }
     return (
-      '<div class="needs-row">' +
+      '<div class="needs-row" data-upc="' + escapeAttr(row.product_id) + '">' +
         '<div class="needs-row-name">' + escapeHtml(row.product_name) + '</div>' +
         '<div class="row-stats">' +
           '<div class="stat"><span class="stat-label">Days left</span><span class="stat-value">' + daysLeftText + '</span></div>' +
@@ -358,6 +442,7 @@
           '<div class="stat"><span class="stat-label">Stock</span><span class="stat-value">' + row.stock_at_last_run + '</span></div>' +
           '<div class="stat"><span class="stat-label">Rate (30d)</span><span class="stat-value">' + formatRate(row.daily_rate_30d) + '</span></div>' +
         '</div>' +
+        switchHTML(row) +
         trendInfoHTML(row) +
       '</div>'
     );
@@ -517,6 +602,116 @@
             ? 'No items in this category match the current filters.'
             : 'No items in this category.') + '</div>';
     }
+    syncSwitchAvailability();
+  }
+
+  // ---- The Don't reorder switch: save, update in place, confirm, undo ----
+  function switchesFor(upc) {
+    return Array.prototype.filter.call(els.rowList.querySelectorAll('.switch'), function (b) {
+      return b.getAttribute('data-upc') === upc;
+    });
+  }
+
+  // One request at a time: the switches and Refresh wait while a save or a Refresh runs. aria-disabled, not
+  // disabled, so a switch that has focus keeps it.
+  function syncSwitchAvailability() {
+    var busy = state.saving || state.loading;
+    Array.prototype.forEach.call(els.rowList.querySelectorAll('.switch'), function (b) {
+      if (busy) b.setAttribute('aria-disabled', 'true'); else b.removeAttribute('aria-disabled');
+    });
+    els.refreshBtn.disabled = busy;
+    els.bannerUndo.setAttribute('aria-disabled', busy ? 'true' : 'false');
+  }
+
+  function showBanner(text, kind, undo) {
+    els.banner.setAttribute('data-kind', kind);
+    els.bannerText.textContent = text;
+    state.undo = undo || null;
+    els.bannerUndo.hidden = !undo;
+    els.banner.hidden = false;
+  }
+
+  // Updates the card's switch, state word and reason line without redrawing, so focus and an open trend line stay put.
+  function paintSwitch(btn, row) {
+    var on = row.reorder_off === true;
+    btn.setAttribute('aria-checked', String(on));
+    var holder = btn.closest('.switch-row');
+    holder.querySelector('.switch-state').textContent = on ? 'On' : 'Off';
+    holder.querySelector('.switch-err').hidden = true;
+    var card = btn.closest('.row-card, .needs-row');
+    var line = card.querySelector('.reason-line');
+    if (!line) {
+      line = document.createElement('div');
+      line.className = 'reason-line';
+      card.insertBefore(line, card.querySelector('.row-stats'));
+    }
+    line.textContent = reasonText(row);
+  }
+
+  function applySwitchResult(cardUpc, d) {
+    var row = state.rows.filter(function (r) { return r.product_id === d.upc; })[0];
+    if (row) {
+      row.reorder_off = d.reorder_off;
+      row.reorder_off_at = d.reorder_off_at;
+      row.moved = true;
+      switchesFor(d.upc).forEach(function (b) { paintSwitch(b, row); });
+    }
+    // The banner names the product the endpoint changed, not the card that was tapped.
+    var verb = d.reorder_off ? 'off the shopping list' : 'back on the shopping list';
+    var text;
+    if (d.changed === false) text = d.product_name + ' was already ' + (d.reorder_off ? 'off' : 'on') + ' the shopping list. Nothing changed.';
+    else if (d.upc !== cardUpc) text = 'Applied to ' + d.product_name + ': ' + verb + '.';
+    else text = d.product_name + ' is ' + verb + '.';
+    showBanner(text, 'ok', d.changed === false ? null : { upc: d.upc, reorder_off: !d.reorder_off });
+  }
+
+  function showSwitchFailure(upc, cardName) {
+    switchesFor(upc).forEach(function (b) {
+      b.closest('.switch-row').querySelector('.switch-err').hidden = false;
+    });
+    showBanner('Nothing changed. Couldn\'t save ' + cardName + '.', 'error', null);
+  }
+
+  // Sends the state asked for (reorder_off true or false), never a toggle.
+  function sendSwitch(upc, wantOff) {
+    var row = state.rows.filter(function (r) { return r.product_id === upc; })[0];
+    var cardName = row ? row.product_name : upc;
+    state.saving = true;
+    syncSwitchAvailability();
+    switchesFor(upc).forEach(function (b) {
+      b.setAttribute('aria-busy', 'true');
+      var holder = b.closest('.switch-row');
+      holder.querySelector('.switch-err').hidden = true;
+      holder.querySelector('.switch-state').textContent = 'Saving…';
+    });
+    fetch(SWITCH_URL, {
+      method: 'POST',
+      headers: { 'X-API-Key': API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ upc: upc, reorder_off: wantOff })
+    })
+      .then(function (res) {
+        return res.json().then(
+          function (data) { return { ok: res.ok, data: data }; },
+          function () { return { ok: false, data: null }; }
+        );
+      })
+      .then(function (r) {
+        var d = r.data;
+        // An error status, an empty reply or a reply missing what the page needs all count as a failure.
+        if (!r.ok || !d || d.success !== true || typeof d.reorder_off !== 'boolean' || !d.upc || !d.product_name) {
+          throw new Error('bad reply');
+        }
+        applySwitchResult(upc, d);
+      })
+      .catch(function () { showSwitchFailure(upc, cardName); })
+      .finally(function () {
+        state.saving = false;
+        Array.prototype.forEach.call(els.rowList.querySelectorAll('.switch'), function (b) {
+          b.removeAttribute('aria-busy');
+          b.closest('.switch-row').querySelector('.switch-state').textContent = b.getAttribute('aria-checked') === 'true' ? 'On' : 'Off';
+        });
+        syncSwitchAvailability();
+      });
   }
 
   function loadData() {
@@ -603,6 +798,23 @@
     var expanded = card.classList.toggle('expanded');
     btn.setAttribute('aria-expanded', String(expanded));
     btn.textContent = expanded ? 'Hide recent trend' : 'Recent trend';
+  });
+
+  els.rowList.addEventListener('click', function (e) {
+    var sw = e.target.closest('.switch');
+    if (!sw) return;
+    if (state.saving || state.loading) return;
+    sendSwitch(sw.getAttribute('data-upc'), sw.getAttribute('aria-checked') !== 'true');
+  });
+
+  els.bannerUndo.addEventListener('click', function () {
+    if (!state.undo || state.saving || state.loading) return;
+    sendSwitch(state.undo.upc, state.undo.reorder_off);
+  });
+
+  els.bannerClose.addEventListener('click', function () {
+    els.banner.hidden = true;
+    state.undo = null;
   });
 
   loadData();
