@@ -259,7 +259,7 @@
   // pattern as Tax & Revenue Share Obligations and the other CRUD tools.
   var API_BASE = 'https://randysmith42.app.n8n.cloud/webhook/reorder-signal';
 
-  var state = { rows: [], view: 'needs_attention', category: null, filterText: '', statusFilters: [], loading: false, error: null, generatedAt: null, groupOpen: false, hashHandled: false, saving: false, undo: null };
+  var state = { rows: [], view: 'needs_attention', category: null, filterText: '', statusFilters: [], loading: false, error: null, generatedAt: null, groupOpen: false, hashHandled: false, saving: false, undo: null, bannerTimer: null };
   // The Don't reorder switch calls the endpoint beside this one, behind the same key.
   var SWITCH_URL = API_BASE.replace('/reorder-signal', '/inventory/set-reorder-off');
   var BUCKET_CAP_DAYS = 10;
@@ -623,12 +623,34 @@
     els.bannerUndo.setAttribute('aria-disabled', busy ? 'true' : 'false');
   }
 
+  // The banner dismisses itself 5 seconds after the latest message (Randy, 2026-11-05). The card keeps its
+  // state, and a failed switch keeps its "Couldn't save" label, so nothing is lost when the banner goes.
+  var BANNER_MS = 5000;
+
+  function hideBanner() {
+    clearTimeout(state.bannerTimer);
+    els.banner.hidden = true;
+    els.bannerUndo.hidden = true;
+    state.undo = null;
+  }
+
+  // Someone using the keyboard may be about to press Undo: while keyboard focus is inside the banner, wait
+  // another 5 seconds. A tap or a click doesn't count, so a phone's banner never gets stuck.
+  function dismissBannerWhenIdle() {
+    var keyboardInside = false;
+    try { keyboardInside = !!els.banner.querySelector(':focus-visible'); } catch (e) { keyboardInside = false; }
+    if (keyboardInside) { state.bannerTimer = setTimeout(dismissBannerWhenIdle, BANNER_MS); return; }
+    hideBanner();
+  }
+
   function showBanner(text, kind, undo) {
     els.banner.setAttribute('data-kind', kind);
     els.bannerText.textContent = text;
     state.undo = undo || null;
     els.bannerUndo.hidden = !undo;
     els.banner.hidden = false;
+    clearTimeout(state.bannerTimer);
+    state.bannerTimer = setTimeout(dismissBannerWhenIdle, BANNER_MS);
   }
 
   // Updates the card's switch, state word and reason line without redrawing, so focus and an open trend line stay put.
@@ -812,10 +834,7 @@
     sendSwitch(state.undo.upc, state.undo.reorder_off);
   });
 
-  els.bannerClose.addEventListener('click', function () {
-    els.banner.hidden = true;
-    state.undo = null;
-  });
+  els.bannerClose.addEventListener('click', hideBanner);
 
   loadData();
 })();
