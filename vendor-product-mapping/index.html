@@ -18,8 +18,7 @@
   h1 { font-family: 'Roboto Slab', serif; font-weight: 700; font-size: 1.6rem; margin: 0 0 0.25rem; letter-spacing: -0.01em; }
   .subtitle { color: var(--ink-soft); font-size: 0.9rem; }
 
-  .chip-bar { display: flex; gap: 0.5rem; overflow-x: auto; padding-bottom: 0.5rem; margin-bottom: 1rem; }
-  .chip-bar::-webkit-scrollbar { display: none; }
+  .chip-bar { display: flex; gap: 0.5rem; flex-wrap: wrap; padding-bottom: 0.5rem; margin-bottom: 1rem; }
   .chip {
     flex: 0 0 auto; font-family: 'Inter', sans-serif; font-weight: 600; font-size: 0.82rem;
     background: #fff; border: 1px solid var(--rule); border-radius: 999px;
@@ -71,8 +70,20 @@
 
   .empty-state { padding: 3rem 1rem; text-align: center; color: var(--ink-soft); }
   .empty-state strong { display: block; color: var(--ink); margin-bottom: 0.35rem; font-family: 'Roboto Slab', serif; }
-  #status-line { font-size: 0.82rem; color: var(--ink-soft); margin-top: 0.75rem; min-height: 1.2em; }
-  #status-line.error { color: var(--danger, #B3492D); }
+  html { scroll-padding-top: 5rem; }
+  #status-line {
+    position: sticky; top: 0; z-index: 30;
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem;
+    margin: 0 0 0.75rem; padding: 0.7rem 0.9rem; border: 1px solid var(--rule); border-radius: 0 0 6px 6px;
+    background: #fff; font-size: 0.9rem; line-height: 1.4; color: var(--ink-soft);
+  }
+  #status-line[hidden] { display: none; }
+  #status-line.success { background: var(--ledger-green-soft); border-color: var(--ledger-green); color: #1F4A3E; }
+  #status-line.error { background: var(--danger-soft, #F5E4DE); border-color: var(--danger, #B3492D); color: #7A2E18; }
+  #status-text { min-width: 0; overflow-wrap: anywhere; }
+  #status-text em { font-size: 0.8rem; }
+  #status-dismiss { background: transparent; border: none; color: inherit; font-size: 0.85rem; text-decoration: underline; cursor: pointer; padding: 0 0.25rem; white-space: nowrap; }
+  #status-dismiss[hidden] { display: none; }
 
   @media (max-width: 800px) {
     #add-form.open { grid-template-columns: 1fr 1fr; }
@@ -84,10 +95,12 @@
     td.actions::before { content: none; }
   }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  button, .chip, input, select { min-height: 44px; }
 </style>
 </head>
 <body>
 <main>
+  <div id="status-line" hidden><span id="status-text"></span><button type="button" id="status-dismiss" hidden>Dismiss</button></div>
   <a class="breadcrumb" href="/">← Operator Tools</a>
   <header>
     <h1>Vendor Product Codes</h1>
@@ -164,8 +177,6 @@
       Add the first one above.
     </div>
   </section>
-
-  <div id="status-line"></div>
 </main>
 
 <script src="/shared/config.js"></script>
@@ -198,9 +209,35 @@
     return div.innerHTML;
   }
 
+  // The message line (style guide section 5). A success fades after 5 seconds; an error stays until dismissed.
+  // "Could not save — Failed to fetch" shows the plain words, then the technical reason small and in italics.
+  var STATUS_MS = 5000;
+  var statusTimer = null;
+  const statusText = document.getElementById('status-text');
+  const statusDismiss = document.getElementById('status-dismiss');
+  statusDismiss.addEventListener('click', function () { setStatus(''); });
+
   function setStatus(message, isError) {
-    statusEl.textContent = message || '';
-    statusEl.className = isError ? 'error' : '';
+    clearTimeout(statusTimer);
+    statusText.textContent = '';
+    if (!message) { statusEl.hidden = true; statusEl.className = ''; return; }
+    var text = String(message);
+    var kind = isError ? 'error' : (/…$/.test(text) ? '' : 'success');
+    var cut = isError ? text.indexOf(' — ') : -1;
+    if (cut < 0) {
+      statusText.textContent = text;
+    } else {
+      var plain = text.slice(0, cut);
+      plain = /^Could not load/.test(plain) ? plain + '. Reload the page to try again.' : 'Nothing changed. ' + plain + '.';
+      statusText.appendChild(document.createTextNode(plain + ' '));
+      var why = document.createElement('em');
+      why.textContent = '(' + text.slice(cut + 3) + ')';
+      statusText.appendChild(why);
+    }
+    statusEl.className = kind;
+    statusDismiss.hidden = !kind;
+    statusEl.hidden = false;
+    if (kind === 'success') statusTimer = setTimeout(function () { setStatus(''); }, STATUS_MS);
   }
 
   function attachUpcTypeahead(inputEl) {
@@ -530,6 +567,7 @@
   }
   updateCodeLabels();
   updateAddCodeLabel();
+  setStatus('Loading…');
   loadProducts()
     .then(loadCodes)
     .then(() => {

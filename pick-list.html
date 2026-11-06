@@ -190,12 +190,16 @@
     .modal-box p { margin-bottom: 16px; color: #555; font-size: 0.9rem; }
     .modal-actions { display: flex; gap: 10px; }
     .modal-actions .btn { flex: 1; margin-bottom: 0; }
-  </style>
+      .pick-message { position: sticky; top: 0; z-index: 20; display: none; align-items: flex-start; justify-content: space-between; gap: 10px; text-align: left; }
+    .pick-message em { font-size: 0.8rem; }
+    .pick-message button { flex: 0 0 auto; background: none; border: none; color: inherit; font-size: 0.85rem; text-decoration: underline; cursor: pointer; min-height: 44px; padding: 0 4px; }
+</style>
 </head>
 <body>
   <div class="container">
     <div id="dateWarningBanner" class="date-warning-banner" style="display:none;"></div>
     <div id="resetErrorBanner" class="error-banner" style="display:none;"></div>
+    <div id="pickMessage" class="error-banner pick-message"><span id="pickMessageText"></span><button type="button" onclick="hidePickMessage()">Dismiss</button></div>
     <div class="header" id="header"></div>
     <button class="btn btn-reset" id="resetBtnTop" onclick="openResetModal()" style="display:none;">Reset Session</button>
     <div id="content" class="loading">Loading pick list...</div>
@@ -279,8 +283,8 @@
       loadPickList()
         .then(function() { render(); })
         .catch(function(err) {
-          document.getElementById('content').innerHTML =
-            '<div class="error-banner">Error loading pick list: ' + err.message + '</div>';
+          document.getElementById('content').innerHTML = '';
+          showPickMessage("Couldn't load the pick list. Reload the page to try again.", err.message);
         });
     }
 
@@ -297,6 +301,23 @@
         a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
     }
     
+    // One place for errors: plain words first, then the technical reason small and in italics. It stays until dismissed.
+    function showPickMessage(plain, why) {
+      var text = document.getElementById('pickMessageText');
+      text.textContent = plain;
+      if (why) {
+        var whyEl = document.createElement('em');
+        whyEl.textContent = '(' + why + ')';
+        text.appendChild(document.createTextNode(' '));
+        text.appendChild(whyEl);
+      }
+      document.getElementById('pickMessage').style.display = 'flex';
+    }
+
+    function hidePickMessage() {
+      document.getElementById('pickMessage').style.display = 'none';
+    }
+
     function loadPickList() {
       var url = READ_URL + '?location=' + encodeURIComponent(locationParam) +
         '&date=' + encodeURIComponent(dateParam) +
@@ -534,13 +555,16 @@
         })
         .catch(function(err) {
           closeResetModal();
-          var banner = document.getElementById('resetErrorBanner');
-          banner.textContent = 'Network error: ' + err.message;
-          banner.style.display = 'block';
+          showPickMessage("Nothing changed. Couldn't reset the session.", err.message);
         });
     }
 
+    // A double tap sends once; the reply, good or bad, frees the item again.
+    var pickInFlight = {};
+
     function submitPick(upc, action, qty) {
+      if (pickInFlight[upc]) return;
+      pickInFlight[upc] = true;
       var body = { location: locationParam, date: dateParam, upc: upc, action: action };
       if (action === 'pick') body.qty_picked = qty;
 
@@ -563,12 +587,13 @@
           } else if (result.status === 409) {
             itemState[upc].expanded = false;
             render();
-            alert('This session is from a previous day and can no longer be modified.');
+            showPickMessage('This session is from a previous day and can no longer be changed.');
           } else {
-            alert('Error: ' + (result.body && result.body.error ? result.body.error : 'unknown error'));
+            showPickMessage("Nothing changed. Couldn't save " + findItem(upc).product_name + '.', result.body && result.body.error ? result.body.error : 'unknown error');
           }
         })
-        .catch(function(err) { alert('Network error: ' + err.message); });
+        .catch(function(err) { showPickMessage("Nothing changed. Couldn't save " + findItem(upc).product_name + '.', err.message); })
+        .finally(function() { delete pickInFlight[upc]; });
     }
 
     function openReviewScreen() {
@@ -626,8 +651,8 @@ function finalizeSession() {
         '<div class="empty-state">Session closed. Shopping list sent.</div>';
       })
     .catch(function(err) {
-      document.getElementById('content').innerHTML =
-        '<div class="error-banner">Error sending shopping list: ' + err.message + '</div>';
+      render();
+          showPickMessage("Couldn't confirm the shopping list was sent. Check your email before trying again.", err.message);
       });
   }
 
