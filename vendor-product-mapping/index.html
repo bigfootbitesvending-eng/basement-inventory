@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@500;700&family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/shared/styles.css">
+<link rel="stylesheet" href="/shared/components.css">
 <style>
   [hidden] { display: none !important; }
 
@@ -70,20 +71,6 @@
 
   .empty-state { padding: 3rem 1rem; text-align: center; color: var(--ink-soft); }
   .empty-state strong { display: block; color: var(--ink); margin-bottom: 0.35rem; font-family: 'Roboto Slab', serif; }
-  html { scroll-padding-top: 5rem; }
-  #status-line {
-    position: sticky; top: 0; z-index: 30;
-    display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem;
-    margin: 0 0 0.75rem; padding: 0.7rem 0.9rem; border: 1px solid var(--rule); border-radius: 0 0 6px 6px;
-    background: #fff; font-size: 0.9rem; line-height: 1.4; color: var(--ink-soft);
-  }
-  #status-line[hidden] { display: none; }
-  #status-line.success { background: var(--ledger-green-soft); border-color: var(--ledger-green); color: #1F4A3E; }
-  #status-line.error { background: var(--danger-soft, #F5E4DE); border-color: var(--danger, #B3492D); color: #7A2E18; }
-  #status-text { min-width: 0; overflow-wrap: anywhere; }
-  #status-text em { font-size: 0.8rem; }
-  #status-dismiss { background: transparent; border: none; color: inherit; font-size: 0.85rem; text-decoration: underline; cursor: pointer; padding: 0 0.25rem; white-space: nowrap; }
-  #status-dismiss[hidden] { display: none; }
 
   @media (max-width: 800px) {
     #add-form.open { grid-template-columns: 1fr 1fr; }
@@ -100,7 +87,6 @@
 </head>
 <body>
 <main>
-  <div id="status-line" hidden><span id="status-text"></span><button type="button" id="status-dismiss" hidden>Dismiss</button></div>
   <a class="breadcrumb" href="/">← Operator Tools</a>
   <header>
     <h1>Vendor Product Codes</h1>
@@ -180,6 +166,7 @@
 </main>
 
 <script src="/shared/config.js"></script>
+<script src="/shared/messages.js"></script>
 <script>
   // Set once "Vendor Product Codes — CRUD API" is published and active.
   const API_BASE = 'https://randysmith42.app.n8n.cloud/webhook/vendor-product-codes';
@@ -197,7 +184,6 @@
   const tableEl = document.getElementById('codes-table');
   const bodyEl = document.getElementById('codes-body');
   const emptyEl = document.getElementById('empty-state');
-  const statusEl = document.getElementById('status-line');
   const codeColHeader = document.getElementById('code-col-header');
   const addCodeLabel = document.getElementById('add-code-label');
   const addVendorSelect = document.getElementById('add-vendor');
@@ -209,36 +195,6 @@
     return div.innerHTML;
   }
 
-  // The message line (style guide section 5). A success fades after 5 seconds; an error stays until dismissed.
-  // "Could not save — Failed to fetch" shows the plain words, then the technical reason small and in italics.
-  var STATUS_MS = 5000;
-  var statusTimer = null;
-  const statusText = document.getElementById('status-text');
-  const statusDismiss = document.getElementById('status-dismiss');
-  statusDismiss.addEventListener('click', function () { setStatus(''); });
-
-  function setStatus(message, isError) {
-    clearTimeout(statusTimer);
-    statusText.textContent = '';
-    if (!message) { statusEl.hidden = true; statusEl.className = ''; return; }
-    var text = String(message);
-    var kind = isError ? 'error' : (/…$/.test(text) ? '' : 'success');
-    var cut = isError ? text.indexOf(' — ') : -1;
-    if (cut < 0) {
-      statusText.textContent = text;
-    } else {
-      var plain = text.slice(0, cut);
-      plain = /^Could not load/.test(plain) ? plain + '. Reload the page to try again.' : 'Nothing changed. ' + plain + '.';
-      statusText.appendChild(document.createTextNode(plain + ' '));
-      var why = document.createElement('em');
-      why.textContent = '(' + text.slice(cut + 3) + ')';
-      statusText.appendChild(why);
-    }
-    statusEl.className = kind;
-    statusDismiss.hidden = !kind;
-    statusEl.hidden = false;
-    if (kind === 'success') statusTimer = setTimeout(function () { setStatus(''); }, STATUS_MS);
-  }
 
   function attachUpcTypeahead(inputEl) {
     const wrapper = document.createElement('div');

@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/shared/styles.css">
+<link rel="stylesheet" href="/shared/components.css">
 <style>
   /* The hidden attribute is only display:none in the browser's default
      stylesheet, so any class below that sets its own display value (flex,
@@ -174,23 +175,7 @@
 
   .explain-line { color: var(--ink-soft); font-size: 0.82rem; margin: -0.25rem 0 0.75rem; }
 
-  /* The confirmation banner: sticky at the top so it is in view wherever the switch was. */
-  html { scroll-padding-top: 5rem; }
-  .refresh-btn, .view-btn, .banner button { min-height: 44px; }
-  .banner-text em { font-size: 0.8rem; }
-  .banner-region { position: sticky; top: 0; z-index: 5; }
-  .banner {
-    display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin: 0 0 1rem; padding: 0.6rem 0.9rem;
-    border-radius: 6px; font-size: 0.9rem; background: var(--ledger-green-soft); border: 1px solid var(--ledger-green); color: var(--ink);
-  }
-  .banner[data-kind="error"] { background: var(--status-error-soft); border-color: var(--status-error); }
-  .banner-text { flex: 1 1 12rem; min-width: 0; overflow-wrap: anywhere; }
-  .banner button {
-    font-family: var(--font-body); font-weight: 600; font-size: 0.88rem; min-height: 44px; min-width: 44px; padding: 0 0.8rem;
-    background: #fff; border: 1px solid var(--rule); border-radius: 6px; color: var(--ledger-green); cursor: pointer;
-  }
-  .banner button[aria-disabled="true"] { opacity: 0.55; cursor: default; }
-  .banner button:focus-visible { outline: 2px solid var(--ledger-green); outline-offset: 2px; }
+  .refresh-btn, .view-btn { min-height: 44px; }
 
   /* The Don't reorder switch: the whole button is at least 44 by 44 px; the drawn track is smaller. */
   .switch-row { display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem 0.6rem; margin-top: 0.5rem; }
@@ -208,13 +193,6 @@
 </head>
 <body>
 <main>
-  <div class="banner-region" id="bannerRegion" role="status" aria-live="polite">
-    <div class="banner" id="banner" data-kind="ok" hidden>
-      <span class="banner-text" id="bannerText"></span>
-      <button type="button" id="bannerUndo" hidden>Undo</button>
-      <button type="button" id="bannerClose" aria-label="Dismiss this message">Dismiss</button>
-    </div>
-  </div>
 
   <header>
     <a class="breadcrumb" href="/">← Operator Tools</a>
@@ -254,6 +232,7 @@
 </main>
 
 <script src="/shared/config.js"></script>
+<script src="/shared/messages.js"></script>
 <script>
 (function () {
   // ---- API integration ----------------------------------------------
@@ -278,10 +257,7 @@
     rowList: document.getElementById('rowList'),
     jumpLine: document.getElementById('jumpLine'),
     jumpLink: document.getElementById('jumpLink'),
-    banner: document.getElementById('banner'),
-    bannerText: document.getElementById('bannerText'),
-    bannerUndo: document.getElementById('bannerUndo'),
-    bannerClose: document.getElementById('bannerClose')
+    bannerUndo: document.getElementById('bb-message-action')
   };
 
   function statusLabel(status) {
@@ -632,39 +608,10 @@
     els.bannerUndo.setAttribute('aria-disabled', busy ? 'true' : 'false');
   }
 
-  // A success dismisses itself 5 seconds after the latest message; an error stays until dismissed (Randy, 2026-11-05).
-  var BANNER_MS = 5000;
-
-  function hideBanner() {
-    clearTimeout(state.bannerTimer);
-    els.banner.hidden = true;
-    els.bannerUndo.hidden = true;
-    state.undo = null;
-  }
-
-  // Someone using the keyboard may be about to press Undo: while keyboard focus is inside the banner, wait
-  // another 5 seconds. A tap or a click doesn't count, so a phone's banner never gets stuck.
-  function dismissBannerWhenIdle() {
-    var keyboardInside = false;
-    try { keyboardInside = !!els.banner.querySelector(':focus-visible'); } catch (e) { keyboardInside = false; }
-    if (keyboardInside) { state.bannerTimer = setTimeout(dismissBannerWhenIdle, BANNER_MS); return; }
-    hideBanner();
-  }
-
+  // The message line is shared (/shared/messages.js). Undo is this page's action in it.
   function showBanner(text, kind, undo, why) {
-    els.banner.setAttribute('data-kind', kind);
-    els.bannerText.textContent = text;
-    if (why) {
-      var whyEl = document.createElement('em');
-      whyEl.textContent = '(' + why + ')';
-      els.bannerText.appendChild(document.createTextNode(' '));
-      els.bannerText.appendChild(whyEl);
-    }
     state.undo = undo || null;
-    els.bannerUndo.hidden = !undo;
-    els.banner.hidden = false;
-    clearTimeout(state.bannerTimer);
-    if (kind === 'ok') state.bannerTimer = setTimeout(dismissBannerWhenIdle, BANNER_MS);
+    BBMessages.show(kind === 'ok' ? 'success' : 'error', text, { why: why, action: undo ? 'Undo' : null, onHide: function () { state.undo = null; } });
   }
 
   // Updates the card's switch, state word and reason line without redrawing, so focus and an open trend line stay put.
@@ -848,7 +795,6 @@
     sendSwitch(state.undo.upc, state.undo.reorder_off);
   });
 
-  els.bannerClose.addEventListener('click', hideBanner);
 
   loadData();
 })();

@@ -4,7 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Pick List (v1.8)</title>
-  <style>
+  <link rel="stylesheet" href="/shared/components.css">
+<style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
@@ -190,16 +191,12 @@
     .modal-box p { margin-bottom: 16px; color: #555; font-size: 0.9rem; }
     .modal-actions { display: flex; gap: 10px; }
     .modal-actions .btn { flex: 1; margin-bottom: 0; }
-      .pick-message { position: sticky; top: 0; z-index: 20; display: none; align-items: flex-start; justify-content: space-between; gap: 10px; text-align: left; }
-    .pick-message em { font-size: 0.8rem; }
-    .pick-message button { flex: 0 0 auto; background: none; border: none; color: inherit; font-size: 0.85rem; text-decoration: underline; cursor: pointer; min-height: 44px; padding: 0 4px; }
-</style>
+  </style>
 </head>
 <body>
   <div class="container">
     <div id="dateWarningBanner" class="date-warning-banner" style="display:none;"></div>
     <div id="resetErrorBanner" class="error-banner" style="display:none;"></div>
-    <div id="pickMessage" class="error-banner pick-message"><span id="pickMessageText"></span><button type="button" onclick="hidePickMessage()">Dismiss</button></div>
     <div class="header" id="header"></div>
     <button class="btn btn-reset" id="resetBtnTop" onclick="openResetModal()" style="display:none;">Reset Session</button>
     <div id="content" class="loading">Loading pick list...</div>
@@ -220,6 +217,7 @@
   </div>
 
   <script src="/shared/config.js"></script>
+<script src="/shared/messages.js"></script>
   <script>
     var READ_URL = 'https://randysmith42.app.n8n.cloud/webhook/pick-list';
     var WRITE_URL = 'https://randysmith42.app.n8n.cloud/webhook/pick-list/pick';
@@ -301,22 +299,8 @@
         a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
     }
     
-    // One place for errors: plain words first, then the technical reason small and in italics. It stays until dismissed.
-    function showPickMessage(plain, why) {
-      var text = document.getElementById('pickMessageText');
-      text.textContent = plain;
-      if (why) {
-        var whyEl = document.createElement('em');
-        whyEl.textContent = '(' + why + ')';
-        text.appendChild(document.createTextNode(' '));
-        text.appendChild(whyEl);
-      }
-      document.getElementById('pickMessage').style.display = 'flex';
-    }
-
-    function hidePickMessage() {
-      document.getElementById('pickMessage').style.display = 'none';
-    }
+    // Errors use the shared message line (/shared/messages.js).
+    function showPickMessage(plain, why) { BBMessages.show('error', plain, { why: why }); }
 
     function loadPickList() {
       var url = READ_URL + '?location=' + encodeURIComponent(locationParam) +
