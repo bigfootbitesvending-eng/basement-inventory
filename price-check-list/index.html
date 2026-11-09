@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bigfoot Bites — Price Check List</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/shared/styles.css">
+<link rel="stylesheet" href="/shared/components.css">
+<link rel="stylesheet" href="/shared/ledger.css">
+<style>
+  /* The list the weekly price check reads (PRD-007). */
+  [hidden] { display: none !important; }
+  main { max-width: 680px; margin: 0 auto; padding: 2.5rem 1rem 4rem; }
+  header { margin-bottom: 1.25rem; border-bottom: 2px solid var(--ink); padding-bottom: 1rem; }
+  .breadcrumb { display: inline-block; font-size: 0.8rem; color: var(--ink-soft); text-decoration: none; margin-bottom: 0.6rem; }
+  h1 { font-size: 1.6rem; margin: 0 0 0.25rem; }
+  .subtitle { color: var(--ink-soft); font-size: 0.88rem; }
+  .xlink { display: inline-block; min-height: 44px; line-height: 44px; font-size: 0.9rem; color: var(--ledger-green); }
+  .panel { background: #fff; border: 1px solid var(--rule); border-radius: 6px; padding: 0.75rem; margin-bottom: 1.25rem; }
+  .panel h2 { font-size: 1rem; margin: 0 0 0.25rem; }
+  .sub { color: var(--ink-soft); font-size: 0.82rem; }
+  .srow { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.5rem 0; border-top: 1px solid var(--rule); font-size: 0.9rem; }
+  .srow:first-of-type { border-top: 0; }
+  .srow .sub { display: block; }
+  .btn { font: inherit; font-size: 0.88rem; font-weight: 600; min-height: 44px; padding: 0.4rem 0.9rem; border-radius: 4px; border: 1px solid var(--rule); background: transparent; color: var(--ink-soft); cursor: pointer; }
+  .btn.primary { background: var(--ledger-green); border-color: var(--ledger-green); color: #fff; }
+  .btn.primary:disabled { background: var(--rule); border-color: var(--rule); color: var(--ink-soft); cursor: default; }
+  .btn.danger { color: var(--status-error); }
+  .btn.big { width: 100%; font-family: var(--font-display); font-size: 1rem; border-radius: 6px; }
+  .switch { min-width: 4.5rem; border: 1px solid var(--ink); color: var(--ink); }
+  .switch[aria-pressed="true"] { background: var(--ledger-green); border-color: var(--ledger-green); color: #fff; }
+  .phead { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin: 1.25rem 0 0.5rem; }
+  .phead .pn { font-family: var(--font-display); font-weight: 700; font-size: 1rem; }
+  .phead select, .field select, .field input { font: inherit; font-size: 0.95rem; padding: 0.5rem; border: 1px solid var(--rule); border-radius: 4px; background: #fff; color: var(--ink); min-height: 44px; }
+  .phead select { font-size: 0.88rem; min-height: 40px; }
+  .tag { display: inline-block; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 0.1rem 0.4rem; border-radius: 3px; margin-left: 0.35rem; background: var(--status-draft-soft); color: #8a5a10; vertical-align: 1px; }
+  .tag.bad { background: var(--status-error-soft); color: var(--status-error); }
+  .lrow { background: #fff; border: 1px solid var(--rule); border-radius: 6px; padding: 0.6rem 0.75rem; margin-bottom: 0.5rem; font-size: 0.9rem; }
+  .lrow .nm { font-weight: 700; }
+  .lrow .meta { color: var(--ink-soft); font-size: 0.82rem; margin-top: 0.2rem; line-height: 1.45; overflow-wrap: anywhere; }
+  .lrow .meta a { color: var(--ledger-green); }
+  .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem; }
+  .field { margin-top: 0.75rem; }
+  .field label { display: block; font-size: 0.82rem; color: var(--ink-soft); margin-bottom: 0.25rem; }
+  .field input, .field select { width: 100%; }
+  .hint { font-size: 0.8rem; color: var(--ink-soft); margin-top: 0.25rem; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+  .picks { border: 1px solid var(--rule); border-radius: 4px; margin-top: 0.25rem; max-height: 15rem; overflow-y: auto; background: #fff; }
+  .picks button { display: block; width: 100%; text-align: left; font: inherit; font-size: 0.9rem; padding: 0.6rem; min-height: 44px; border: 0; border-top: 1px solid var(--rule); background: #fff; color: var(--ink); cursor: pointer; }
+  .picks button:first-child { border-top: 0; }
+  .picked { font-weight: 600; margin-top: 0.25rem; }
+  .empty { color: var(--ink-soft); padding: 1.25rem 0; text-align: center; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <a class="breadcrumb" href="/">← Operator Tools</a>
+    <h1>Price Check List</h1>
+    <div class="subtitle">The store pages each price check reads, which stores are on, and where you usually buy each product.</div>
+    <a class="xlink" href="../where-to-buy/">See Where to Buy &rarr;</a>
+  </header>
+  <div id="content" class="empty">Loading…</div>
+</main>
+
+<script src="/shared/config.js"></script>
+<script src="/shared/messages.js"></script>
+<script>
+(function () {
+  // config.js (loaded above) declares API_KEY. The list API is CARTA - List CRUD API; products come from Inventory - List Products.
+  var LIST_API = 'https://randysmith42.app.n8n.cloud/webhook/carta-list';
+  var PRODUCTS_API = 'https://randysmith42.app.n8n.cloud/webhook/inventory/products';
+  var UOMS = ['fl oz', 'oz', 'ml', 'l', 'g'];
+
+  var state = { stores: [], rows: [], products: null, adding: false, editId: null, busy: false, undo: null, pick: null, filter: '' };
+  var root = document.getElementById('content');
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; });
+  }
+  function swept() { return state.stores.filter(function (s) { return s.swept; }); }
+  function storeOptions(selected, list) {
+    return (list || state.stores).map(function (s) { return '<option' + (s.store === selected ? ' selected' : '') + '>' + esc(s.store) + '</option>'; }).join('');
+  }
+  function uomOptions(selected) { return UOMS.map(function (u) { return '<option' + (u === selected ? ' selected' : '') + '>' + u + '</option>'; }).join(''); }
+  function host(url) { try { return new URL(url).hostname; } catch (e) { return url; } }
+  function num(n) { return String(Number(n)); }
+
+  // ---- API ------------------------------------------------------------
+  function getJson(url) {
+    return fetch(url, { headers: { 'X-API-Key': API_KEY } }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (b) { if (!r.ok) throw new Error(b.error || ('HTTP ' + r.status)); return b; });
+    });
+  }
+  function post(body) {
+    return fetch(LIST_API, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY }, body: JSON.stringify(body) })
+      .then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (b) {
+          if (!r.ok) { var e = new Error(b.error || ('Nothing changed. The server said HTTP ' + r.status + '.')); e.why = b.why || null; throw e; }
+          return b;
+        });
+      });
+  }
+  function load() {
+    return getJson(LIST_API).then(function (items) {
+      items = Array.isArray(items) ? items : [];
+      state.stores = items.filter(function (i) { return i.kind === 'store'; });
+      state.rows = items.filter(function (i) { return i.kind === 'row'; });
+    });
+  }
+  function loadProducts() {
+    if (state.products) return Promise.resolve();
+    return getJson(PRODUCTS_API).then(function (b) {
+      state.products = (b.products || []).filter(function (p) { return !p.retired_at; });
+    });
+  }
+
+  // One write at a time; the button that started it is disabled until the answer comes back (no double taps).
+  function write(body, okText, after, undo) {
+    if (state.busy) return;
+    state.undo = null;
+    state.busy = true;
+    BBMessages.show('working', 'Saving…');
+    render();
+    post(body).then(function (changed) {
+      return load().then(function () {
+        state.busy = false;
+        if (after) after(changed);
+        state.undo = undo || null;
+        render();
+        BBMessages.show('success', okText(changed), state.undo ? { action: 'Undo', onHide: function () { state.undo = null; } } : {});
+      });
+    }).catch(function (err) {
+      state.busy = false;
+      render();
+      BBMessages.show('error', /^Nothing changed/.test(err.message) ? err.message : 'Nothing changed. ' + err.message, { why: err.why || (err.message === 'Failed to fetch' ? 'Failed to fetch' : null) });
+    });
+  }
+  document.addEventListener('click', function (e) {
+    if (e.target && e.target.id === 'bb-message-action' && state.undo && !state.busy) {
+      var u = state.undo; state.undo = null;
+      write(u.body, function () { return u.text; });
+    }
+  });
+
+  // ---- Render -----------------------------------------------------------
+  function render() {
+    var h = '';
+    h += '<section class="panel"><h2>Stores</h2><div class="sub">Switch a store off when its pages keep failing. You check it by hand, and Where to Buy says so.</div>';
+    state.stores.forEach(function (s) {
+      if (s.swept) {
+        h += '<div class="srow"><div><b>' + esc(s.store) + '</b><span class="sub">' + (s.switched_on ? 'Checked each run' : 'Off: not in the price check, checked by hand') + '</span></div>' +
+             '<button class="btn switch" type="button" data-act="switch" data-store="' + esc(s.store) + '" aria-pressed="' + s.switched_on + '"' + (state.busy ? ' disabled' : '') + '>' + (s.switched_on ? 'On' : 'Off') + '</button></div>';
+      } else {
+        h += '<div class="srow"><div><b>' + esc(s.store) + '</b><span class="sub">Not in the price check: a usual store only</span></div></div>';
+      }
+    });
+    h += '</section>';
+
+    if (!state.adding) h += '<button class="btn primary big" type="button" data-act="add-open">+ Add a page</button>';
+    else h += addForm();
+
+    if (state.rows.length === 0) {
+      h += '<div class="empty">Nothing on the list yet, so the price check has nothing to read. Add a page to start.</div>';
+    }
+    var last = null;
+    state.rows.forEach(function (r) {
+      if (r.upc !== last) {
+        last = r.upc;
+        h += '<div class="phead"><span class="pn">' + esc(r.product_name) + (r.retired ? '<span class="tag bad">Retired</span>' : '') + '</span>' +
+             '<label class="sub">Usual store <select data-act="usual" data-upc="' + esc(r.upc) + '" data-name="' + esc(r.product_name) + '"' + (state.busy ? ' disabled' : '') + '>' + storeOptions(r.usual_store) + '</select></label></div>';
+      }
+      h += state.editId === r.id ? editForm(r) : rowHtml(r);
+    });
+    // A redraw must never lose what was typed (a refused save keeps the form as it was).
+    var keep = {};
+    root.querySelectorAll('input[id], select[id]').forEach(function (el) { if (/^[ae]-/.test(el.id) && el.id !== 'a-prod') keep[el.id] = el.value; });
+    root.className = '';
+    root.innerHTML = h;
+    Object.keys(keep).forEach(function (id) { var el = document.getElementById(id); if (el) el.value = keep[id]; });
+  }
+  function storeOff(name) { var s = state.stores.filter(function (x) { return x.store === name; })[0]; return s && !s.switched_on; }
+  function rowHtml(r) {
+    return '<div class="lrow"><div class="nm">' + esc(r.store) + (storeOff(r.store) ? '<span class="tag">store off</span>' : '') + '</div>' +
+      '<div class="meta"><a href="' + esc(r.page_url) + '" target="_blank" rel="noopener">' + esc(host(r.page_url)) + '</a> · item id ' + esc(r.store_item_id) +
+      '<br>Pack: ' + esc(r.units_per_pack) + ' × ' + esc(num(r.unit_size)) + ' ' + esc(r.unit_size_uom) + '. A page showing a different pack is skipped.' +
+      (r.retired ? '<br>Retired in the catalog, so the price check skips it.' : '') + '</div>' +
+      '<div class="actions"><button class="btn" type="button" data-act="edit" data-id="' + r.id + '"' + (state.busy ? ' disabled' : '') + '>Edit</button>' +
+      '<button class="btn danger" type="button" data-act="off" data-id="' + r.id + '"' + (state.busy ? ' disabled' : '') + '>Turn off</button></div></div>';
+  }
+  function packFields(prefix, r) {
+    return '<div class="grid2"><div class="field"><label for="' + prefix + 'units">Units per pack</label><input id="' + prefix + 'units" inputmode="numeric" value="' + esc(r ? r.units_per_pack : '') + '"></div>' +
+      '<div class="field"><label for="' + prefix + 'size">Unit size</label><div class="grid2"><input id="' + prefix + 'size" inputmode="decimal" value="' + esc(r ? num(r.unit_size) : '') + '">' +
+      '<select id="' + prefix + 'uom">' + uomOptions(r ? r.unit_size_uom : 'fl oz') + '</select></div></div></div>' +
+      '<div class="hint">How many things you sell in what you buy. A 6-pack of bottles is 6. A Sam\'s case of 48 bars is 48. The price check skips a page whose count or size differs.</div>';
+  }
+  function editForm(r) {
+    return '<div class="lrow"><div class="nm">' + esc(r.store) + '</div>' +
+      '<div class="field"><label for="e-url">Product page</label><input id="e-url" value="' + esc(r.page_url) + '"></div>' +
+      '<div class="field"><label for="e-id">Store item id</label><input id="e-id" value="' + esc(r.store_item_id) + '"></div>' + packFields('e-', r) +
+      '<div class="hint">A new page link or item id keeps this row. A new units per pack or unit size starts a new row, and this one keeps its price history.</div>' +
+      '<div class="actions"><button class="btn" type="button" data-act="edit-cancel">Cancel</button>' +
+      '<button class="btn primary" type="button" id="e-save" data-act="edit-save" data-id="' + r.id + '"' + (state.editDirty && !state.busy ? '' : ' disabled') + '>Save</button></div></div>';
+  }
+  function addForm() {
+    var picks = '';
+    if (state.products && state.filter.length >= 2 && !state.pick) {
+      var f = state.filter.toLowerCase();
+      var found = state.products.filter(function (p) { return p.product_name.toLowerCase().indexOf(f) >= 0 || String(p.upc).indexOf(f) >= 0; }).slice(0, 12);
+      picks = '<div class="picks">' + (found.length ? found.map(function (p) {
+        return '<button type="button" data-act="pick" data-upc="' + esc(p.upc) + '" data-name="' + esc(p.product_name) + '">' + esc(p.product_name) + ' <span class="sub">' + esc(p.upc) + '</span></button>';
+      }).join('') : '<div class="sub" style="padding:0.6rem">No product matches. Add it to the catalog first.</div>') + '</div>';
+    }
+    return '<section class="panel"><h2>Add a page</h2>' +
+      '<div class="field"><label for="a-prod">Product</label>' +
+      (state.pick ? '<div class="picked">' + esc(state.pick.name) + ' <button class="btn" type="button" data-act="unpick">Change</button></div>'
+                  : '<input id="a-prod" autocomplete="off" placeholder="' + (state.products ? 'Type 2 or more letters of the name, or the UPC' : 'Loading products…') + '" value="' + esc(state.filter) + '">' + picks) +
+      '<div class="hint">From the basement catalog.</div></div>' +
+      '<div class="field"><label for="a-store">Store</label><select id="a-store">' + storeOptions('Kroger', swept()) + '</select></div>' +
+      '<div class="field"><label for="a-url">Product page</label><input id="a-url" inputmode="url" placeholder="Paste the address of the product page"></div>' +
+      '<div class="field"><label for="a-id">Store item id</label><input id="a-id" placeholder="Kroger GTIN, Walmart or Sam\'s item number, Amazon ASIN"><div class="hint">It\'s in the page address. The price check skips a page whose item id differs.</div></div>' +
+      packFields('a-', null) +
+      '<div class="actions"><button class="btn" type="button" data-act="add-cancel">Cancel</button>' +
+      '<button class="btn primary" type="button" data-act="add-save"' + (state.busy ? ' disabled' : '') + '>Add page</button></div></section>';
+  }
+
+  // ---- Actions ------------------------------------------------------------
+  function val(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; }
+  function packFrom(prefix) { return { units_per_pack: Number(val(prefix + 'units')), unit_size: Number(val(prefix + 'size')), unit_size_uom: val(prefix + 'uom') }; }
+  function rowById(id) { return state.rows.filter(function (r) { return String(r.id) === String(id); })[0]; }
+
+  root.addEventListener('input', function (e) {
+    if (e.target.id === 'a-prod') {
+      state.filter = e.target.value;
+      var pos = e.target.selectionStart;
+      render();
+      var el = document.getElementById('a-prod'); if (el) { el.focus(); el.setSelectionRange(pos, pos); }
+    }
+    if (state.editId && /^e-/.test(e.target.id)) { state.editDirty = true; document.getElementById('e-save').disabled = state.busy; }
+  });
+  root.addEventListener('change', function (e) {
+    var t = e.target;
+    if (state.editId && /^e-/.test(t.id)) { state.editDirty = true; document.getElementById('e-save').disabled = state.busy; }
+    if (t.getAttribute('data-act') === 'usual') {
+      var name = t.getAttribute('data-name'), store = t.value;
+      write({ operation: 'set_usual', upc: t.getAttribute('data-upc'), usual_store: store }, function () { return 'Usual store for ' + name + ': ' + store + '.'; });
+    }
+  });
+  root.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-act]');
+    if (!b || b.tagName === 'SELECT' || state.busy) return;
+    var act = b.getAttribute('data-act');
+    if (act === 'switch') {
+      var store = b.getAttribute('data-store'), on = b.getAttribute('aria-pressed') !== 'true';
+      write({ operation: 'set_store', store: store, switched_on: on }, function () { return store + (on ? ' is on: checked each run.' : ' is off: check it by hand.'); }, null,
+        { body: { operation: 'set_store', store: store, switched_on: !on }, text: store + ' is ' + (on ? 'off' : 'on') + ' again.' });
+    } else if (act === 'add-open') {
+      state.adding = true; state.pick = null; state.filter = ''; render();
+      loadProducts().then(render).catch(function (err) { BBMessages.show('error', 'Couldn\'t load the product catalog. Reload the page to try again.', { why: err.message }); });
+    } else if (act === 'add-cancel') {
+      state.adding = false; render();
+    } else if (act === 'pick') {
+      state.pick = { upc: b.getAttribute('data-upc'), name: b.getAttribute('data-name') }; render();
+    } else if (act === 'unpick') {
+      state.pick = null; render();
+    } else if (act === 'add-save') {
+      if (!state.pick) { BBMessages.show('error', 'Nothing changed. Pick a product first.'); return; }
+      var body = Object.assign({ operation: 'create', upc: state.pick.upc, store: val('a-store'), page_url: val('a-url'), store_item_id: val('a-id') }, packFrom('a-'));
+      var label = state.pick.name + ' at ' + body.store;
+      write(body, function (changed) {
+        var back = changed && changed[0] && changed[0].result === 'turned_on';
+        return back ? label + ' is back on the list, with its price history.' : label + ' added.';
+      }, function () { state.adding = false; state.pick = null; state.filter = ''; });
+    } else if (act === 'edit') {
+      state.editId = Number(b.getAttribute('data-id')); state.editDirty = false; render();
+    } else if (act === 'edit-cancel') {
+      state.editId = null; render();
+    } else if (act === 'edit-save') {
+      var r = rowById(b.getAttribute('data-id'));
+      var eb = Object.assign({ operation: 'update', list_id: r.id, page_url: val('e-url'), store_item_id: val('e-id') }, packFrom('e-'));
+      write(eb, function (changed) {
+        var res = changed && changed[0] && changed[0].result;
+        return r.product_name + ' at ' + r.store + (res === 'updated' ? ' saved.' : ': new pack saved as a new row; the old one keeps its history.');
+      }, function () { state.editId = null; });
+    } else if (act === 'off') {
+      var x = rowById(b.getAttribute('data-id'));
+      write({ operation: 'turn_off', list_id: x.id }, function () { return x.product_name + ' at ' + x.store + ' turned off. Its price history is kept.'; }, null,
+        { body: { operation: 'create', upc: x.upc, store: x.store, page_url: x.page_url, store_item_id: x.store_item_id, units_per_pack: x.units_per_pack, unit_size: Number(x.unit_size), unit_size_uom: x.unit_size_uom },
+          text: x.product_name + ' at ' + x.store + ' is back on the list.' });
+    }
+  });
+
+  load().then(render).catch(function (err) {
+    root.className = 'empty';
+    root.textContent = '';
+    BBMessages.show('error', 'Couldn\'t load the list. Reload the page to try again.', { why: err.message });
+  });
+})();
+</script>
+</body>
+</html>
