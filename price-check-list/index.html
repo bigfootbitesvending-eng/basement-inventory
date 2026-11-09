@@ -31,6 +31,8 @@
   .btn.big { width: 100%; font-family: var(--font-display); font-size: 1rem; border-radius: 6px; }
   .switch { min-width: 4.5rem; border: 1px solid var(--ink); color: var(--ink); }
   .switch[aria-pressed="true"] { background: var(--ledger-green); border-color: var(--ledger-green); color: #fff; }
+  details.stores { margin: 0 0 0.25rem; }
+  details.stores > summary { cursor: pointer; font-size: 0.86rem; color: var(--ledger-green); font-weight: 600; min-height: 44px; line-height: 44px; }
   .phead { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin: 1.25rem 0 0.5rem; }
   .phead .pn { font-family: var(--font-display); font-weight: 700; font-size: 1rem; }
   .phead select, .field select, .field input { font: inherit; font-size: 0.95rem; padding: 0.5rem; border: 1px solid var(--rule); border-radius: 4px; background: #fff; color: var(--ink); min-height: 44px; }
@@ -87,7 +89,7 @@
   // Stores are offered in this order when adding; the next store not yet on the list comes first.
   var ADD_ORDER = ['Kroger', 'Walmart', "Sam's", 'Amazon'];
 
-  var state = { stores: [], rows: [], products: null, adding: false, editId: null, busy: false, undo: null, pick: null, filter: '', add: null };
+  var state = { stores: [], rows: [], products: null, adding: false, editId: null, busy: false, undo: null, pick: null, filter: '', add: null, open: {} };
   var root = document.getElementById('content');
 
   function esc(s) {
@@ -235,14 +237,21 @@
     if (state.rows.length === 0) {
       h += '<div class="empty">Nothing on the list yet, so the price check has nothing to read. Add a page to start.</div>';
     }
-    var last = null;
+    // One group per product: its name and usual store stay in view; its store rows fold away like Where to Buy's
+    // "All stores, history". A group stays open across redraws once opened, and opens for a row being edited.
+    var groups = [];
     state.rows.forEach(function (r) {
-      if (r.upc !== last) {
-        last = r.upc;
-        h += '<div class="phead"><span class="pn">' + esc(r.product_name) + (r.retired ? '<span class="tag bad">Retired</span>' : '') + '</span>' +
-             '<label class="sub">Usual store <select data-act="usual" data-upc="' + esc(r.upc) + '" data-name="' + esc(r.product_name) + '"' + (state.busy ? ' disabled' : '') + '>' + storeOptions(r.usual_store) + '</select></label></div>';
-      }
-      h += state.editId === r.id ? editForm(r) : rowHtml(r);
+      if (!groups.length || groups[groups.length - 1].upc !== r.upc) groups.push({ upc: r.upc, rows: [] });
+      groups[groups.length - 1].rows.push(r);
+    });
+    groups.forEach(function (g) {
+      var r0 = g.rows[0];
+      var open = state.open[g.upc] || g.rows.some(function (r) { return r.id === state.editId; });
+      h += '<div class="phead"><span class="pn">' + esc(r0.product_name) + (r0.retired ? '<span class="tag bad">Retired</span>' : '') + '</span>' +
+           '<label class="sub">Usual store <select data-act="usual" data-upc="' + esc(r0.upc) + '" data-name="' + esc(r0.product_name) + '"' + (state.busy ? ' disabled' : '') + '>' + storeOptions(r0.usual_store) + '</select></label></div>';
+      h += '<details class="stores" data-upc="' + esc(g.upc) + '"' + (open ? ' open' : '') + '><summary>Stores (' + g.rows.length + '): ' +
+           esc(g.rows.map(function (r) { return r.store; }).join(', ')) + '</summary>' +
+           g.rows.map(function (r) { return state.editId === r.id ? editForm(r) : rowHtml(r); }).join('') + '</details>';
     });
     // A redraw must never lose what was typed (a refused save keeps the form as it was).
     var keep = {};
@@ -327,6 +336,10 @@
   function packFrom(prefix) { return { units_per_pack: Number(val(prefix + 'units')), unit_size: Number(val(prefix + 'size')), unit_size_uom: val(prefix + 'uom') }; }
   function rowById(id) { return state.rows.filter(function (r) { return String(r.id) === String(id); })[0]; }
 
+  // Remember which product groups are open, so a redraw after a save doesn't fold them back up.
+  root.addEventListener('toggle', function (e) {
+    if (e.target.matches && e.target.matches('details.stores')) state.open[e.target.getAttribute('data-upc')] = e.target.open;
+  }, true);
   root.addEventListener('input', function (e) {
     if (e.target.id === 'a-prod') {
       state.filter = e.target.value;
@@ -384,6 +397,7 @@
         var next = goNext && state.add && state.add.store ? ' Next: ' + state.add.store + '.' : '';
         return (back ? label + ' is back on the list, with its price history.' : label + ' added.') + next;
       }, function () {
+        state.open[pick.upc] = true;
         if (goNext) state.add = startAdd(pick, keep);
         else { state.adding = false; state.pick = null; state.add = null; state.filter = ''; }
       });
