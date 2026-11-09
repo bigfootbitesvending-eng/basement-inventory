@@ -84,6 +84,13 @@
   function storeOptions(selected, list) {
     return (list || state.stores).map(function (s) { return '<option' + (s.store === selected ? ' selected' : '') + '>' + esc(s.store) + '</option>'; }).join('');
   }
+  // Units per pack: every whole number to 60, then the bigger case sizes. A saved value outside the list is kept as an option.
+  var PACKS = []; for (var i = 1; i <= 60; i++) PACKS.push(i); PACKS = PACKS.concat([72, 84, 96, 120, 144]);
+  function packOptions(selected) {
+    var list = PACKS.slice(); var sel = Number(selected) || 0;
+    if (sel && list.indexOf(sel) < 0) { list.push(sel); list.sort(function (a, b) { return a - b; }); }
+    return '<option value=""' + (sel ? '' : ' selected') + '>Choose</option>' + list.map(function (n) { return '<option' + (n === sel ? ' selected' : '') + '>' + n + '</option>'; }).join('');
+  }
   function uomOptions(selected) { return UOMS.map(function (u) { return '<option' + (u === selected ? ' selected' : '') + '>' + u + '</option>'; }).join(''); }
   function host(url) { try { return new URL(url).hostname; } catch (e) { return url; } }
   function num(n) { return String(Number(n)); }
@@ -191,7 +198,7 @@
       '<button class="btn danger" type="button" data-act="off" data-id="' + r.id + '"' + (state.busy ? ' disabled' : '') + '>Turn off</button></div></div>';
   }
   function packFields(prefix, r) {
-    return '<div class="grid2"><div class="field"><label for="' + prefix + 'units">Units per pack</label><input id="' + prefix + 'units" inputmode="numeric" value="' + esc(r ? r.units_per_pack : '') + '"></div>' +
+    return '<div class="grid2"><div class="field"><label for="' + prefix + 'units">Units per pack</label><select id="' + prefix + 'units">' + packOptions(r ? r.units_per_pack : 0) + '</select></div>' +
       '<div class="field"><label for="' + prefix + 'size">Unit size</label><div class="grid2"><input id="' + prefix + 'size" inputmode="decimal" value="' + esc(r ? num(r.unit_size) : '') + '">' +
       '<select id="' + prefix + 'uom">' + uomOptions(r ? r.unit_size_uom : 'fl oz') + '</select></div></div></div>' +
       '<div class="hint">How many things you sell in what you buy. A 6-pack of bottles is 6. A Sam\'s case of 48 bars is 48. The price check skips a page whose count or size differs.</div>';
