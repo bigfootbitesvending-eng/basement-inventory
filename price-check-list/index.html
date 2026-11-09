@@ -52,6 +52,16 @@
   .picks button:first-child { border-top: 0; }
   .picked { font-weight: 600; margin-top: 0.25rem; }
   .empty { color: var(--ink-soft); padding: 1.25rem 0; text-align: center; }
+  .chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  .chip { font: inherit; font-size: 0.9rem; min-height: 44px; padding: 0.4rem 0.9rem; border-radius: 999px; border: 1px solid var(--rule); background: #fff; color: var(--ink); cursor: pointer; }
+  .chip[aria-pressed="true"] { background: var(--ledger-green); border-color: var(--ledger-green); color: #fff; }
+  .chip:disabled { color: var(--ink-soft); background: var(--paper); text-decoration: line-through; cursor: default; }
+  .built { margin-top: 0.3rem; font-size: 0.84rem; overflow-wrap: anywhere; }
+  .built a { color: var(--ledger-green); }
+  .built.ok { color: var(--ledger-green); font-weight: 600; }
+  .built.bad { color: var(--status-error); font-weight: 600; }
+  .btn.next { flex: 1 1 100%; font-family: var(--font-display); font-size: 1rem; border-radius: 6px; }
+  .done { padding: 0.75rem; background: var(--ledger-green-soft); border-radius: 6px; margin-top: 0.75rem; }
 </style>
 </head>
 <body>
@@ -72,9 +82,12 @@
   // config.js (loaded above) declares API_KEY. The list API is CARTA - List CRUD API; products come from Inventory - List Products.
   var LIST_API = 'https://randysmith42.app.n8n.cloud/webhook/carta-list';
   var PRODUCTS_API = 'https://randysmith42.app.n8n.cloud/webhook/inventory/products';
-  var UOMS = ['fl oz', 'oz', 'ml', 'l', 'g'];
+  // The units the catalog's names use (oz 170, ct 33, ml 1, gal 1). Fluid and weight ounces are one unit.
+  var UOMS = ['oz', 'ct', 'ml', 'gal'];
+  // Stores are offered in this order when adding; the next store not yet on the list comes first.
+  var ADD_ORDER = ['Kroger', 'Walmart', "Sam's", 'Amazon'];
 
-  var state = { stores: [], rows: [], products: null, adding: false, editId: null, busy: false, undo: null, pick: null, filter: '' };
+  var state = { stores: [], rows: [], products: null, adding: false, editId: null, busy: false, undo: null, pick: null, filter: '', add: null };
   var root = document.getElementById('content');
 
   function esc(s) {
@@ -91,7 +104,57 @@
     if (sel && list.indexOf(sel) < 0) { list.push(sel); list.sort(function (a, b) { return a - b; }); }
     return '<option value=""' + (sel ? '' : ' selected') + '>Choose</option>' + list.map(function (n) { return '<option' + (n === sel ? ' selected' : '') + '>' + n + '</option>'; }).join('');
   }
-  function uomOptions(selected) { return UOMS.map(function (u) { return '<option' + (u === selected ? ' selected' : '') + '>' + u + '</option>'; }).join(''); }
+  function normUom(u) { u = String(u || '').toLowerCase(); return u === 'fl oz' ? 'oz' : u; }
+  function uomOptions(selected) {
+    selected = normUom(selected);
+    return '<option value=""' + (selected ? '' : ' selected') + '>Choose</option>' + UOMS.map(function (u) { return '<option' + (u === selected ? ' selected' : '') + '>' + u + '</option>'; }).join('');
+  }
+  // Size from the catalog name's end: "Coca-Cola Classic, 16.9 Oz", "Toothbrush, 1 Ct", "Toilet Paper, 4 Rolls", "Milk, 0.5 Gal".
+  function sizeFromName(name) {
+    var m = /(?:^|[\s,])(\d*\.?\d+)\s*(fl\.?\s*oz|oz|ct|count|pieces?|rolls?|ml|gal)\.?\s*$/i.exec(String(name || ''));
+    if (!m) return null;
+    var u = m[2].toLowerCase().replace(/[\s.]/g, '');
+    u = (u === 'floz' || u === 'oz') ? 'oz' : (u === 'ml' || u === 'gal') ? u : 'ct';
+    return { size: String(Number(m[1])), uom: u };
+  }
+  // Kroger's item id is the UPC without its check digit, padded to 13 digits.
+  function krogerId(upc) { return ('0000000000000' + String(upc).slice(0, -1)).slice(-13); }
+  // Paste a link or type an id: either way, read the id and build the link. Kroger needs its full link (its address needs the name).
+  var ITEM = {
+    Kroger: { label: 'Kroger page link', ph: 'Paste the Kroger product page link', re: /kroger\.com\/p\/[^/?#]+\/(\d{13})/ },
+    Walmart: { label: 'Walmart item number', ph: 'e.g. 10535170, or paste the link', re: /walmart\.com\/ip\/(?:[^/?#]+\/)?(\d{5,})/, build: 'https://www.walmart.com/ip/' },
+    "Sam's": { label: "Sam's item number", ph: 'e.g. 15098707355, or paste the link', re: /samsclub\.com\/(?:ip|p)\/(?:[^/?#]+\/)?(?:prod)?(\d{5,})/, build: 'https://www.samsclub.com/ip/' },
+    Amazon: { label: 'Amazon ASIN', ph: 'e.g. B000T9WM62, or paste the link', re: /amazon\.com\/(?:[^/?#]+\/)?(?:dp|gp\/product)\/([A-Z0-9]{10})/, build: 'https://www.amazon.com/dp/', tail: '/' }
+  };
+  function readItem(store, raw) {
+    raw = String(raw || '').trim();
+    var spec = ITEM[store];
+    if (!spec) return { id: null, link: null };
+    var m = spec.re.exec(raw);
+    if (store === 'Kroger') return { id: m ? m[1] : null, link: m ? raw.split(/[?#]/)[0] : null };
+    var id = m ? m[1] : (/^https?:/i.test(raw) || /\s/.test(raw) ? null : raw);
+    return id ? { id: id, link: spec.build + id + (spec.tail || '') } : { id: null, link: null };
+  }
+  function rowsFor(upc) { return state.rows.filter(function (r) { return r.upc === upc; }); }
+  function storesLeft(upc) {
+    var have = rowsFor(upc).map(function (r) { return r.store; });
+    var swept = state.stores.filter(function (x) { return x.swept; }).map(function (x) { return x.store; });
+    var order = ADD_ORDER.filter(function (x) { return swept.indexOf(x) >= 0; }).concat(swept.filter(function (x) { return ADD_ORDER.indexOf(x) < 0; }));
+    return order.filter(function (x) { return have.indexOf(x) < 0; });
+  }
+  // What the add form starts with for a product: size and units from its other rows, else size from its name.
+  function startAdd(pick, keep) {
+    var rows = rowsFor(pick.upc), last = rows[rows.length - 1], left = storesLeft(pick.upc);
+    var a = { store: left[0] || null, item: '', units: 0, size: '', uom: '', from: '' };
+    if (keep) { a.units = keep.units; a.size = keep.size; a.uom = keep.uom; a.from = 'Same as the ' + rows.map(function (r) { return r.store; }).join(' and ') + ' row' + (rows.length > 1 ? 's.' : '.'); }
+    else if (last) { a.units = last.units_per_pack; a.size = num(last.unit_size); a.uom = normUom(last.unit_size_uom); a.from = 'Same as the ' + rows.map(function (r) { return r.store; }).join(' and ') + ' row' + (rows.length > 1 ? 's.' : '.'); }
+    else {
+      var z = sizeFromName(pick.name);
+      if (z) { a.size = z.size; a.uom = z.uom; a.from = 'From the product name. Check it.' + (z.uom === 'ct' ? ' Counted items use ct: a 4-pack of toothbrushes is 4 × 1 ct.' : ''); }
+      else a.from = 'The name has no size, so pick one. A toothbrush is 1 ct.';
+    }
+    return a;
+  }
   function host(url) { try { return new URL(url).hostname; } catch (e) { return url; } }
   function num(n) { return String(Number(n)); }
 
@@ -183,7 +246,7 @@
     });
     // A redraw must never lose what was typed (a refused save keeps the form as it was).
     var keep = {};
-    root.querySelectorAll('input[id], select[id]').forEach(function (el) { if (/^[ae]-/.test(el.id) && el.id !== 'a-prod') keep[el.id] = el.value; });
+    root.querySelectorAll('input[id], select[id]').forEach(function (el) { if (/^e-/.test(el.id)) keep[el.id] = el.value; });
     root.className = '';
     root.innerHTML = h;
     Object.keys(keep).forEach(function (id) { var el = document.getElementById(id); if (el) el.value = keep[id]; });
@@ -192,7 +255,7 @@
   function rowHtml(r) {
     return '<div class="lrow"><div class="nm">' + esc(r.store) + (storeOff(r.store) ? '<span class="tag">store off</span>' : '') + '</div>' +
       '<div class="meta"><a href="' + esc(r.page_url) + '" target="_blank" rel="noopener">' + esc(host(r.page_url)) + '</a> · item id ' + esc(r.store_item_id) +
-      '<br>Pack: ' + esc(r.units_per_pack) + ' × ' + esc(num(r.unit_size)) + ' ' + esc(r.unit_size_uom) + '. A page showing a different pack is skipped.' +
+      '<br>Pack: ' + esc(r.units_per_pack) + ' × ' + esc(num(r.unit_size)) + ' ' + esc(normUom(r.unit_size_uom)) + '. A page showing a different pack is skipped.' +
       (r.retired ? '<br>Retired in the catalog, so the price check skips it.' : '') + '</div>' +
       '<div class="actions"><button class="btn" type="button" data-act="edit" data-id="' + r.id + '"' + (state.busy ? ' disabled' : '') + '>Edit</button>' +
       '<button class="btn danger" type="button" data-act="off" data-id="' + r.id + '"' + (state.busy ? ' disabled' : '') + '>Turn off</button></div></div>';
@@ -200,7 +263,7 @@
   function packFields(prefix, r) {
     return '<div class="grid2"><div class="field"><label for="' + prefix + 'units">Units per pack</label><select id="' + prefix + 'units">' + packOptions(r ? r.units_per_pack : 0) + '</select></div>' +
       '<div class="field"><label for="' + prefix + 'size">Unit size</label><div class="grid2"><input id="' + prefix + 'size" inputmode="decimal" value="' + esc(r ? num(r.unit_size) : '') + '">' +
-      '<select id="' + prefix + 'uom">' + uomOptions(r ? r.unit_size_uom : 'fl oz') + '</select></div></div></div>' +
+      '<select id="' + prefix + 'uom">' + uomOptions(r ? r.unit_size_uom : '') + '</select></div></div></div>' +
       '<div class="hint">How many things you sell in what you buy. A 6-pack of bottles is 6. A Sam\'s case of 48 bars is 48. The price check skips a page whose count or size differs.</div>';
   }
   function editForm(r) {
@@ -212,25 +275,51 @@
       '<button class="btn primary" type="button" id="e-save" data-act="edit-save" data-id="' + r.id + '"' + (state.editDirty && !state.busy ? '' : ' disabled') + '>Save</button></div></div>';
   }
   function addForm() {
-    var picks = '';
-    if (state.products && state.filter.length >= 2 && !state.pick) {
-      var f = state.filter.toLowerCase();
-      var found = state.products.filter(function (p) { return p.product_name.toLowerCase().indexOf(f) >= 0 || String(p.upc).indexOf(f) >= 0; }).slice(0, 12);
-      picks = '<div class="picks">' + (found.length ? found.map(function (p) {
-        return '<button type="button" data-act="pick" data-upc="' + esc(p.upc) + '" data-name="' + esc(p.product_name) + '">' + esc(p.product_name) + ' <span class="sub">' + esc(p.upc) + '</span></button>';
-      }).join('') : '<div class="sub" style="padding:0.6rem">No product matches. Add it to the catalog first.</div>') + '</div>';
+    var h = '<section class="panel"><h2>Add a page</h2>';
+    if (!state.pick) {
+      var picks = '';
+      if (state.products && state.filter.length >= 2) {
+        var f = state.filter.toLowerCase();
+        var found = state.products.filter(function (p) { return p.product_name.toLowerCase().indexOf(f) >= 0 || String(p.upc).indexOf(f) >= 0; }).slice(0, 12);
+        picks = '<div class="picks">' + (found.length ? found.map(function (p) {
+          return '<button type="button" data-act="pick" data-upc="' + esc(p.upc) + '" data-name="' + esc(p.product_name) + '">' + esc(p.product_name) + ' <span class="sub">' + esc(p.upc) + '</span></button>';
+        }).join('') : '<div class="sub" style="padding:0.6rem">No product matches. Add it to the catalog first.</div>') + '</div>';
+      }
+      return h + '<div class="field"><label for="a-prod">Product</label><input id="a-prod" autocomplete="off" placeholder="' + (state.products ? 'Type 2 or more letters of the name, or the UPC' : 'Loading products…') + '" value="' + esc(state.filter) + '">' + picks +
+        '<div class="hint">From the basement catalog.</div></div><div class="actions"><button class="btn" type="button" data-act="add-cancel">Cancel</button></div></section>';
     }
-    return '<section class="panel"><h2>Add a page</h2>' +
-      '<div class="field"><label for="a-prod">Product</label>' +
-      (state.pick ? '<div class="picked">' + esc(state.pick.name) + ' <button class="btn" type="button" data-act="unpick">Change</button></div>'
-                  : '<input id="a-prod" autocomplete="off" placeholder="' + (state.products ? 'Type 2 or more letters of the name, or the UPC' : 'Loading products…') + '" value="' + esc(state.filter) + '">' + picks) +
-      '<div class="hint">From the basement catalog.</div></div>' +
-      '<div class="field"><label for="a-store">Store</label><select id="a-store">' + storeOptions('Kroger', swept()) + '</select></div>' +
-      '<div class="field"><label for="a-url">Product page</label><input id="a-url" inputmode="url" placeholder="Paste the address of the product page"></div>' +
-      '<div class="field"><label for="a-id">Store item id</label><input id="a-id" placeholder="Kroger GTIN, Walmart or Sam\'s item number, Amazon ASIN"><div class="hint">It\'s in the page address. The price check skips a page whose item id differs.</div></div>' +
-      packFields('a-', null) +
-      '<div class="actions"><button class="btn" type="button" data-act="add-cancel">Cancel</button>' +
-      '<button class="btn primary" type="button" data-act="add-save"' + (state.busy ? ' disabled' : '') + '>Add page</button></div></section>';
+    var a = state.add, rows = rowsFor(state.pick.upc), left = storesLeft(state.pick.upc);
+    h += '<div class="picked">' + esc(state.pick.name) + ' <button class="btn" type="button" data-act="unpick">Change</button></div>';
+    h += '<div class="sub">' + (rows.length ? 'On the list at ' + rows.map(function (r) { return esc(r.store) + ' (' + esc(r.units_per_pack) + ' × ' + esc(num(r.unit_size)) + ' ' + esc(normUom(r.unit_size_uom)) + ')'; }).join(', ') + '.' : 'Not on the list yet.') + '</div>';
+    if (!a.store) {
+      return h + '<div class="done">On the list at every store the price check reads.</div><div class="actions"><button class="btn" type="button" data-act="add-cancel">Done</button>' +
+        '<button class="btn" type="button" data-act="unpick">Add another product</button></div></section>';
+    }
+    var swept = state.stores.filter(function (x) { return x.swept; }).map(function (x) { return x.store; });
+    var order = ADD_ORDER.filter(function (x) { return swept.indexOf(x) >= 0; }).concat(swept.filter(function (x) { return ADD_ORDER.indexOf(x) < 0; }));
+    h += '<div class="field"><label>Store</label><div class="chips">' + order.map(function (x) {
+      var on = left.indexOf(x) < 0;
+      return '<button class="chip" type="button" data-act="add-store" data-store="' + esc(x) + '" aria-pressed="' + (x === a.store) + '"' + (on ? ' disabled title="Already on the list"' : '') + '>' + esc(x) + '</button>';
+    }).join('') + '</div>' + (storeOff(a.store) ? '<div class="hint">' + esc(a.store) + ' is switched off, so this row waits until it\'s on.</div>' : '') + '</div>';
+    var it = readItem(a.store, a.item), spec = ITEM[a.store] || { label: 'Store item id', ph: '' };
+    h += '<div class="field"><label for="a-item">' + esc(spec.label) + '</label><input id="a-item" autocomplete="off" placeholder="' + esc(spec.ph) + '" value="' + esc(a.item) + '">';
+    if (a.store === 'Kroger') {
+      var want = krogerId(state.pick.upc);
+      h += '<div class="hint">Kroger needs its full link. Its item id, ' + want + ', comes from the UPC.</div>' +
+        (a.item ? (it.id === want ? '<div class="built ok">Item id ' + it.id + ' matches the UPC.</div>' : '<div class="built bad">' + (it.id ? 'This link is item ' + esc(it.id) + ', not ' + want + '. Check it\'s the right product.' : 'That isn\'t a Kroger product link.') + '</div>') : '');
+    } else {
+      h += it.link ? '<div class="built">Link: <a href="' + esc(it.link) + '" target="_blank" rel="noopener">' + esc(it.link) + '</a> · open it to check</div>' : '<div class="hint">The link is built from this.</div>';
+    }
+    h += '</div>';
+    h += '<div class="grid2"><div class="field"><label for="a-units">Units per pack</label><select id="a-units">' + packOptions(a.units) + '</select></div>' +
+      '<div class="field"><label for="a-size">Unit size</label><div class="grid2"><input id="a-size" inputmode="decimal" value="' + esc(a.size) + '">' +
+      '<select id="a-uom">' + uomOptions(a.uom) + '</select></div></div></div>' +
+      '<div class="hint">' + esc(a.from) + (a.store === "Sam's" ? ' Sam\'s sells cases: set the units per pack to the case count.' : '') + '</div>';
+    var next = left.filter(function (x) { return x !== a.store; })[0];
+    h += '<div class="actions"><button class="btn" type="button" data-act="add-cancel">Cancel</button>' +
+      '<button class="btn" type="button" data-act="add-save"' + (state.busy ? ' disabled' : '') + '>Save</button>' +
+      (next ? '<button class="btn primary next" type="button" data-act="add-next"' + (state.busy ? ' disabled' : '') + '>Save and add ' + esc(next) + ' &rarr;</button>' : '') + '</div></section>';
+    return h;
   }
 
   // ---- Actions ------------------------------------------------------------
@@ -245,10 +334,20 @@
       render();
       var el = document.getElementById('a-prod'); if (el) { el.focus(); el.setSelectionRange(pos, pos); }
     }
+    if (e.target.id === 'a-item' && state.add) {
+      state.add.item = e.target.value;
+      var p2 = e.target.selectionStart;
+      render();
+      var it = document.getElementById('a-item'); if (it) { it.focus(); it.setSelectionRange(p2, p2); }
+    }
+    if (e.target.id === 'a-size' && state.add) state.add.size = e.target.value;
     if (state.editId && /^e-/.test(e.target.id)) { state.editDirty = true; document.getElementById('e-save').disabled = state.busy; }
   });
   root.addEventListener('change', function (e) {
     var t = e.target;
+    if (state.add && t.id === 'a-units') state.add.units = Number(t.value) || 0;
+    if (state.add && t.id === 'a-size') state.add.size = t.value;
+    if (state.add && t.id === 'a-uom') state.add.uom = t.value;
     if (state.editId && /^e-/.test(t.id)) { state.editDirty = true; document.getElementById('e-save').disabled = state.busy; }
     if (t.getAttribute('data-act') === 'usual') {
       var name = t.getAttribute('data-name'), store = t.value;
@@ -264,22 +363,30 @@
       write({ operation: 'set_store', store: store, switched_on: on }, function () { return store + (on ? ' is on: checked each run.' : ' is off: check it by hand.'); }, null,
         { body: { operation: 'set_store', store: store, switched_on: !on }, text: store + ' is ' + (on ? 'off' : 'on') + ' again.' });
     } else if (act === 'add-open') {
-      state.adding = true; state.pick = null; state.filter = ''; render();
+      state.adding = true; state.pick = null; state.add = null; state.filter = ''; render();
       loadProducts().then(render).catch(function (err) { BBMessages.show('error', 'Couldn\'t load the product catalog. Reload the page to try again.', { why: err.message }); });
     } else if (act === 'add-cancel') {
       state.adding = false; render();
     } else if (act === 'pick') {
-      state.pick = { upc: b.getAttribute('data-upc'), name: b.getAttribute('data-name') }; render();
+      state.pick = { upc: b.getAttribute('data-upc'), name: b.getAttribute('data-name') }; state.add = startAdd(state.pick); render();
     } else if (act === 'unpick') {
-      state.pick = null; render();
-    } else if (act === 'add-save') {
-      if (!state.pick) { BBMessages.show('error', 'Nothing changed. Pick a product first.'); return; }
-      var body = Object.assign({ operation: 'create', upc: state.pick.upc, store: val('a-store'), page_url: val('a-url'), store_item_id: val('a-id') }, packFrom('a-'));
-      var label = state.pick.name + ' at ' + body.store;
+      state.pick = null; state.add = null; state.filter = ''; render();
+    } else if (act === 'add-store') {
+      state.add.store = b.getAttribute('data-store'); state.add.item = ''; render();
+    } else if (act === 'add-save' || act === 'add-next') {
+      var a = state.add, it = readItem(a.store, a.item), pick = state.pick, goNext = act === 'add-next';
+      if (!it.id || !it.link) { BBMessages.show('error', 'Nothing changed. ' + (a.store === 'Kroger' ? 'Paste the Kroger product page link.' : 'Type the ' + ITEM[a.store].label.toLowerCase() + ', or paste the link.')); return; }
+      if (a.store === 'Kroger' && it.id !== krogerId(pick.upc)) { BBMessages.show('error', 'Nothing changed. That Kroger link is item ' + it.id + ', not ' + krogerId(pick.upc) + ' from the UPC. Check it\'s the right product.'); return; }
+      var body = { operation: 'create', upc: pick.upc, store: a.store, page_url: it.link, store_item_id: it.id, units_per_pack: Number(a.units), unit_size: Number(a.size), unit_size_uom: a.uom };
+      var label = pick.name + ' at ' + a.store, keep = { units: a.units, size: a.size, uom: a.uom };
       write(body, function (changed) {
         var back = changed && changed[0] && changed[0].result === 'turned_on';
-        return back ? label + ' is back on the list, with its price history.' : label + ' added.';
-      }, function () { state.adding = false; state.pick = null; state.filter = ''; });
+        var next = goNext && state.add && state.add.store ? ' Next: ' + state.add.store + '.' : '';
+        return (back ? label + ' is back on the list, with its price history.' : label + ' added.') + next;
+      }, function () {
+        if (goNext) state.add = startAdd(pick, keep);
+        else { state.adding = false; state.pick = null; state.add = null; state.filter = ''; }
+      });
     } else if (act === 'edit') {
       state.editId = Number(b.getAttribute('data-id')); state.editDirty = false; render();
     } else if (act === 'edit-cancel') {
