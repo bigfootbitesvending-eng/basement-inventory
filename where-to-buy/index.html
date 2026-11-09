@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bigfoot Bites — Where to Buy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/shared/styles.css">
+<link rel="stylesheet" href="/shared/components.css">
+<link rel="stylesheet" href="/shared/ledger.css">
+<style>
+  /* Where to buy each product, from the last price check (PRD-007). */
+  [hidden] { display: none !important; }
+  main { max-width: 680px; margin: 0 auto; padding: 2.5rem 1rem 4rem; }
+  header { margin-bottom: 1.25rem; border-bottom: 2px solid var(--ink); padding-bottom: 1rem; }
+  .breadcrumb { display: inline-block; font-size: 0.8rem; color: var(--ink-soft); text-decoration: none; margin-bottom: 0.6rem; }
+  h1 { font-size: 1.6rem; margin: 0 0 0.25rem; }
+  .subtitle { color: var(--ink-soft); font-size: 0.88rem; }
+  .xlink { display: inline-block; min-height: 44px; line-height: 44px; font-size: 0.9rem; color: var(--ledger-green); }
+  .asof { background: #fff; border: 1px solid var(--rule); border-left: 4px solid var(--ledger-green); border-radius: 6px; padding: 0.6rem 0.8rem; font-size: 0.9rem; margin-bottom: 1rem; }
+  .asof .stores { color: var(--ink-soft); margin-top: 0.15rem; font-size: 0.84rem; }
+  .unchecked { background: var(--status-error-soft); border: 1px solid var(--status-error); border-radius: 6px; padding: 0.6rem 0.8rem; margin-bottom: 1rem; font-size: 0.88rem; }
+  .unchecked h2 { font-size: 1rem; margin: 0 0 0.25rem; color: var(--status-error); }
+  .unchecked ul { margin: 0.4rem 0 0; padding-left: 1.1rem; }
+  .unchecked li { margin-bottom: 0.4rem; }
+  .card { background: #fff; border: 1px solid var(--rule); border-radius: 6px; padding: 0.75rem; margin-bottom: 0.75rem; }
+  .pname { font-weight: 700; font-size: 1rem; margin-bottom: 0.35rem; }
+  .pick { font-size: 0.93rem; line-height: 1.4; margin: 0.25rem 0; }
+  .tag { display: inline-block; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 0.1rem 0.4rem; border-radius: 3px; margin-right: 0.35rem; background: var(--ledger-green-soft); color: var(--ledger-green); vertical-align: 1px; }
+  .tag.ship { background: var(--status-draft-soft); color: #8a5a10; }
+  .tag.bad { background: var(--status-error-soft); color: var(--status-error); }
+  .tag.hand, .tag.usual { background: var(--paper); color: var(--ink-soft); border: 1px solid var(--rule); }
+  .price { font-weight: 700; white-space: nowrap; }
+  .sub { color: var(--ink-soft); font-size: 0.82rem; }
+  .usual-line { font-size: 0.85rem; margin-top: 0.4rem; padding-top: 0.4rem; border-top: 1px dashed var(--rule); }
+  details { margin-top: 0.5rem; }
+  summary { cursor: pointer; font-size: 0.86rem; color: var(--ledger-green); font-weight: 600; min-height: 44px; line-height: 44px; }
+  table.t { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  table.t th { text-align: left; color: var(--ink-soft); font-weight: 600; border-bottom: 1px solid var(--rule); padding: 0.25rem 0.3rem; }
+  table.t td { padding: 0.35rem 0.3rem; border-bottom: 1px solid var(--rule); vertical-align: top; overflow-wrap: anywhere; }
+  table.t td.n { white-space: nowrap; }
+  .hist { font-size: 0.82rem; color: var(--ink-soft); margin-top: 0.5rem; line-height: 1.5; }
+  .hist b { color: var(--ink); }
+  .empty { color: var(--ink-soft); padding: 1.25rem 0; text-align: center; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <a class="breadcrumb" href="/">← Operator Tools</a>
+    <h1>Where to Buy</h1>
+    <div class="subtitle">The cheapest store for each product, per bottle, can or bar, from the last price check.</div>
+    <a class="xlink" href="../price-check-list/">Change what&rsquo;s checked &rarr;</a>
+  </header>
+  <div id="content" class="empty">Loading…</div>
+</main>
+
+<script src="/shared/config.js"></script>
+<script src="/shared/messages.js"></script>
+<script>
+(function () {
+  // config.js declares API_KEY. Results come from CARTA - Read Results, which calls CARTA - Build Results.
+  var RESULTS_API = 'https://randysmith42.app.n8n.cloud/webhook/carta/results';
+  var root = document.getElementById('content');
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; });
+  }
+  function money(n) { return n == null ? '—' : '$' + Number(n).toFixed(2); }
+  function num(n) { return String(Number(n)); }
+  // Every date shows in Central, the business's time. Never "today" (E-35).
+  function central(iso, withTime) {
+    var d = new Date(iso);
+    var o = { timeZone: 'America/Chicago', weekday: 'short', month: 'numeric', day: 'numeric' };
+    if (withTime) { o.hour = 'numeric'; o.minute = '2-digit'; }
+    var p = new Intl.DateTimeFormat('en-US', o).formatToParts(d);
+    var g = function (t) { return (p.filter(function (x) { return x.type === t; })[0] || {}).value; };
+    return g('weekday') + ' ' + g('month') + '/' + g('day') + (withTime ? ', ' + g('hour') + ':' + g('minute') + ' ' + g('dayPeriod') : '');
+  }
+  function day(dateOnly) { return central(dateOnly + 'T17:00:00Z', false); }
+  function ways(a) {
+    if (!a) return '';
+    var w = [];
+    if (a.in_store) w.push('in store');
+    if (a.pickup) w.push('pickup');
+    if (a.delivery) w.push('delivery');
+    if (!w.length && a.ship) return 'ships only';
+    return w.join(', ') + (a.ship ? ', or ships' : '');
+  }
+  function pack(l) { return l.units + ' × ' + num(l.unit_size) + ' ' + l.uom; }
+  function dealBits(l) { return l.deal_text ? esc(l.deal_text) + (l.deal_ends ? ', ends ' + esc(central(l.deal_ends, false)) : '') : ''; }
+
+  function pickLine(tag, cls, l, none) {
+    if (!l) return '<div class="pick"><span class="tag ' + cls + '">' + tag + '</span>' + none + '</div>';
+    var bits = [esc(pack(l)) + ' at ' + money(l.pack_price)];
+    if (l.deal_text) bits.push(dealBits(l));
+    if (ways(l.availability)) bits.push(esc(ways(l.availability)));
+    return '<div class="pick"><span class="tag ' + cls + '">' + tag + '</span><b>' + esc(l.store) + '</b> <span class="price">' + money(l.unit_price) + ' each</span>' +
+      '<div class="sub">' + bits.join(' · ') + '</div></div>';
+  }
+  function usualLine(p) {
+    var u = p.usual || {};
+    if (u.state === 'not_swept') return 'Usual store: ' + esc(p.usual_store) + ' (not in the price check)';
+    if (u.state === 'not_listed') return 'Usual store: ' + esc(p.usual_store) + ' (not on the list for this product)';
+    if (u.state === 'by_hand') return 'Usual store: ' + esc(p.usual_store) + ', checked by hand this run';
+    if (u.state === 'not_in_run') return 'Usual store: ' + esc(p.usual_store) + ', not in the last run';
+    if (u.state === 'unchecked') return 'Usual store: ' + esc(p.usual_store) + ', unchecked this run (' + esc(u.reason) + ')';
+    if (p.lowest && p.lowest.store === p.usual_store) return 'Your usual store has the lowest price.';
+    return 'Usual store: ' + esc(p.usual_store) + ', ' + money(u.unit_price) + ' each';
+  }
+  function rowCells(p, l) {
+    var st = esc(l.store) + (l.store === p.usual_store ? ' <span class="tag usual">usual</span>' : '');
+    if (l.state === 'by_hand') return '<tr><td>' + st + '</td><td>—</td><td class="n"><span class="tag hand">by hand</span></td><td>Store switched off</td></tr>';
+    if (l.state === 'not_in_run') return '<tr><td>' + st + '</td><td>—</td><td class="n">—</td><td>Not in the last run</td></tr>';
+    if (l.state === 'unchecked') return '<tr><td>' + st + '</td><td>—</td><td class="n"><span class="tag bad">unchecked</span></td><td>' + esc(l.reason) + '</td></tr>';
+    return '<tr><td>' + st + '</td><td>' + esc(pack(l)) + '<br>' + money(l.pack_price) + '</td><td class="n">' + money(l.unit_price) + '</td><td>' +
+      esc(ways(l.availability)) + (l.deal_text ? '<br>' + dealBits(l) : '') + '</td></tr>';
+  }
+  function history(p) {
+    var trend = Object.keys(p.trend || {}).filter(function (s) { return (p.trend[s] || []).length; }).map(function (s) {
+      return esc(s) + ' ' + p.trend[s].map(money).join(' &rarr; ');
+    });
+    return '<div class="hist"><b>Trend</b> (each, last 3 runs): ' + (trend.join('; ') || 'not enough history') +
+      '<br><b>Last deal:</b> ' + (p.last_deal ? esc(p.last_deal.text) + ' at ' + esc(p.last_deal.store) + ', ' + esc(day(p.last_deal.run_date)) : 'none seen yet') +
+      '<br><b>Next likely deal:</b> ' + (p.next_deal ? esc(p.next_deal.store) + ' around ' + esc(day(p.next_deal.date)) : 'not enough history') + '</div>';
+  }
+
+  function render(items) {
+    var run = items.filter(function (i) { return i.kind === 'run'; })[0];
+    if (!run || run.none) {
+      root.className = 'empty';
+      root.innerHTML = '<b>No runs yet.</b><br>The list has ' + ((run && run.active_rows) || 0) + ' active rows. Start a price check from the laptop to see where to buy each product.';
+      return;
+    }
+    var h = '<div class="asof">Prices as of <b>' + esc(central(run.posted_at, true)) + '</b><div class="stores">Checked: ' + esc((run.stores_checked || []).join(', ') || 'none') +
+      ((run.stores_not_checked || []).length ? ' · Not checked: ' + esc(run.stores_not_checked.join(', ')) : '') +
+      ((run.stores_by_hand || []).length ? ' · Checked by hand: ' + esc(run.stores_by_hand.join(', ')) : '') + '</div></div>';
+    var un = items.filter(function (i) { return i.kind === 'unchecked'; });
+    if (un.length) {
+      // A store-level failure (bot check, wrong store) is one line per store with its pages beneath (E-04).
+      var groups = [];
+      un.forEach(function (u) {
+        var store = /^(bot check|wrong store)/.test(u.reason || '');
+        var g = store && groups.filter(function (x) { return x.store === u.store && x.reason === u.reason; })[0];
+        if (g) g.names.push(u.product_name); else groups.push({ store: u.store, reason: u.reason, storeLevel: store, names: [u.product_name] });
+      });
+      var pages = function (n) { return n + (n === 1 ? ' page' : ' pages'); };
+      h += '<section class="unchecked"><h2>Unchecked (' + pages(un.length) + ')</h2><div>No price for these; nothing is filled in from an earlier run.</div><ul>' +
+        groups.map(function (g) {
+          if (!g.storeLevel) return '<li><b>' + esc(g.names[0]) + '</b> at ' + esc(g.store) + ': ' + esc(g.reason) + '</li>';
+          var why = /^bot check/.test(g.reason) ? '<div>' + esc(g.store) + ' showed a “verify you’re human” page when the price check opened it, so it skipped every ' + esc(g.store) +
+            ' page this run rather than guess. Check these at ' + esc(g.store) + ' by hand, or clear the check in the price-check browser on the laptop and rerun. Two runs in a row: switch ' + esc(g.store) + ' off on the Price Check List.</div>' : '';
+          return '<li><b>' + esc(g.store) + ': ' + esc(g.reason) + '</b> (' + pages(g.names.length) + ')' + why + '<div class="sub">Pages: ' + esc(g.names.join(', ')) + '</div></li>';
+        }).join('') + '</ul></section>';
+    }
+    items.filter(function (i) { return i.kind === 'product'; }).forEach(function (p) {
+      h += '<section class="card"><div class="pname">' + esc(p.name) + '</div>';
+      if (!p.lowest) h += '<div class="pick sub">No price this run.</div>';
+      else if (p.same) h += pickLine('Lowest price', '', p.lowest, '') + '<div class="sub">Also the lowest without shipping.</div>';
+      else h += pickLine('Lowest price', 'ship', p.lowest, '') + '<div class="sub">Before shipping fees and order minimums.</div>' +
+        pickLine('No shipping', '', p.lowest_no_ship, 'none available without shipping');
+      h += '<div class="usual-line">' + usualLine(p) + '</div>';
+      h += '<details><summary>All stores, history</summary><table class="t"><tr><th>Store</th><th>Pack</th><th>Each</th><th>Get it</th></tr>' +
+        p.rows.map(function (l) { return rowCells(p, l); }).join('') + '</table>' + history(p) + '</details></section>';
+    });
+    root.className = '';
+    root.innerHTML = h;
+  }
+
+  fetch(RESULTS_API, { headers: { 'X-API-Key': API_KEY } })
+    .then(function (r) { return r.json().catch(function () { return {}; }).then(function (b) { if (!r.ok) throw new Error(b.error || ('HTTP ' + r.status)); return b; }); })
+    .then(function (items) { render(Array.isArray(items) ? items : []); })
+    .catch(function (err) {
+      root.className = 'empty'; root.textContent = '';
+      BBMessages.show('error', 'Couldn\'t load Where to Buy. Reload the page to try again.', { why: err.message });
+    });
+})();
+</script>
+</body>
+</html>
