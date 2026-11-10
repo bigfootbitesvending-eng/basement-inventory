@@ -31,12 +31,7 @@
   .btn.big { width: 100%; font-family: var(--font-display); font-size: 1rem; border-radius: 6px; }
   .switch { min-width: 4.5rem; border: 1px solid var(--ink); color: var(--ink); }
   .switch[aria-pressed="true"] { background: var(--ledger-green); border-color: var(--ledger-green); color: #fff; }
-  details.stores { margin: 0 0 0.25rem; }
-  details.stores > summary { cursor: pointer; font-size: 0.86rem; color: var(--ledger-green); font-weight: 600; min-height: 44px; line-height: 44px; }
-  .phead { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin: 1.25rem 0 0.5rem; }
-  .phead .pn { font-family: var(--font-display); font-weight: 700; font-size: 1rem; }
-  .phead select, .field select, .field input { font: inherit; font-size: 0.95rem; padding: 0.5rem; border: 1px solid var(--rule); border-radius: 4px; background: #fff; color: var(--ink); min-height: 44px; }
-  .phead select { font-size: 0.88rem; min-height: 40px; }
+  .field select, .field input { font: inherit; font-size: 0.95rem; padding: 0.5rem; border: 1px solid var(--rule); border-radius: 4px; background: #fff; color: var(--ink); min-height: 44px; }
   .tag { display: inline-block; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 0.1rem 0.4rem; border-radius: 3px; margin-left: 0.35rem; background: var(--status-draft-soft); color: #8a5a10; vertical-align: 1px; }
   .tag.bad { background: var(--status-error-soft); color: var(--status-error); }
   .lrow { background: #fff; border: 1px solid var(--rule); border-radius: 6px; padding: 0.6rem 0.75rem; margin-bottom: 0.5rem; font-size: 0.9rem; }
@@ -65,6 +60,32 @@
   .built.warn { color: #8a5a10; font-weight: 600; }
   .btn.next { flex: 1 1 100%; font-family: var(--font-display); font-size: 1rem; border-radius: 6px; }
   .done { padding: 0.75rem; background: var(--ledger-green-soft); border-radius: 6px; margin-top: 0.75rem; }
+  /* The Stores panel folds to one summary; an off store shows in its summary in red, with words (E-71). */
+  details.storepanel { background: #fff; border: 1px solid var(--rule); border-radius: 6px; margin-bottom: 1rem; }
+  details.storepanel > summary { list-style: none; cursor: pointer; padding: 0.6rem 0.75rem; min-height: 44px; box-sizing: border-box; font-size: 0.9rem; }
+  details.storepanel > summary::-webkit-details-marker, details.prow > summary::-webkit-details-marker { display: none; }
+  details.storepanel > summary .chev { float: right; color: var(--ledger-green); font-weight: 600; font-size: 0.86rem; margin-left: 0.5rem; }
+  details.storepanel[open] > summary .chev::after { content: ' \25B4'; }
+  details.storepanel:not([open]) > summary .chev::after { content: ' \25BE'; }
+  details.storepanel .inner { padding: 0 0.75rem 0.5rem; }
+  .offword { color: var(--status-error); font-weight: 600; }
+  /* Find a product, then one row per product under its catalog category (E-72, E-73). */
+  .findrow input { width: 100%; box-sizing: border-box; font: inherit; font-size: 0.95rem; padding: 0.5rem 0.6rem; border: 1px solid var(--rule); border-radius: 4px; background: #fff; color: var(--ink); min-height: 44px; margin-top: 1rem; }
+  .count { font-size: 0.8rem; color: var(--ink-soft); margin: 0.35rem 0 0; }
+  .catname { font-size: 1.15rem; margin: 1.25rem 0 0.4rem; }
+  .catname .scount { font-family: var(--font-body); font-weight: 400; font-size: 0.82rem; color: var(--ink-soft); }
+  .plist { background: #fff; border: 1px solid var(--rule); border-radius: 6px; }
+  details.prow { border-top: 1px solid var(--rule); }
+  details.prow:first-child { border-top: 0; }
+  details.prow > summary { list-style: none; cursor: pointer; position: relative; padding: 0.45rem 2rem 0.45rem 0.75rem; min-height: 44px; box-sizing: border-box; }
+  details.prow > summary::after { content: '\25B8'; position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%); color: var(--ledger-green); font-weight: 600; }
+  details.prow[open] > summary::after { content: '\25BE'; }
+  details.prow > summary .pn { font-weight: 600; font-size: 0.93rem; }
+  details.prow > summary .line { font-size: 0.8rem; color: var(--ink-soft); margin-top: 0.1rem; }
+  details.prow .inner { padding: 0 0.75rem 0.75rem; }
+  .usualset { display: flex; align-items: center; gap: 0.5rem; margin: 0.25rem 0 0.6rem; font-size: 0.85rem; color: var(--ink-soft); }
+  .usualset select { font: inherit; font-size: 0.88rem; padding: 0.5rem; border: 1px solid var(--rule); border-radius: 4px; background: #fff; color: var(--ink); min-height: 44px; }
+  .nomatch { padding: 0.9rem 0.75rem; font-size: 0.9rem; }
 </style>
 </head>
 <body>
@@ -90,7 +111,7 @@
   // Stores are offered in this order when adding; the next store not yet on the list comes first.
   var ADD_ORDER = ['Kroger', 'Walmart', "Sam's", 'Amazon'];
 
-  var state = { stores: [], rows: [], products: null, adding: false, editId: null, busy: false, undo: null, pick: null, filter: '', add: null, open: {} };
+  var state = { stores: [], rows: [], products: null, adding: false, editId: null, busy: false, undo: null, pick: null, filter: '', add: null, open: {}, find: '', storesOpen: false };
   var root = document.getElementById('content');
 
   function esc(s) {
@@ -159,6 +180,15 @@
     return a;
   }
   function host(url) { try { return new URL(url).hostname; } catch (e) { return url; } }
+  // Catalog category; a missing one shows as Other, after every named category (E-73). Same order as Where to Buy.
+  function catOf(name) { var c = String(name == null ? '' : name).trim(); return c || 'Other'; }
+  function byCategory(groups) {
+    var cats = {};
+    groups.forEach(function (g) { var c = catOf(g.rows[0].category); (cats[c] = cats[c] || []).push(g); });
+    return Object.keys(cats).sort(function (a, b) { return (a === 'Other') - (b === 'Other') || a.localeCompare(b); }).map(function (c) {
+      return { cat: c, groups: cats[c].sort(function (a, b) { return a.rows[0].product_name.localeCompare(b.rows[0].product_name); }) };
+    });
+  }
   function num(n) { return String(Number(n)); }
 
   // ---- API ------------------------------------------------------------
@@ -221,16 +251,22 @@
   // ---- Render -----------------------------------------------------------
   function render() {
     var h = '';
-    h += '<section class="panel"><h2>Stores</h2><div class="sub">Switch a store off when its pages keep failing. You check it by hand, and Where to Buy says so.</div>';
+    // Stores: a closed summary over today's switches (E-71). It stays open across redraws once opened.
+    var on = [], off = [], only = [], srows = '';
     state.stores.forEach(function (s) {
       if (s.swept) {
-        h += '<div class="srow"><div><b>' + esc(s.store) + '</b><span class="sub">' + (s.switched_on ? 'Checked each run' : 'Off: not in the price check, checked by hand') + '</span></div>' +
+        (s.switched_on ? on : off).push(s.store);
+        srows += '<div class="srow"><div><b>' + esc(s.store) + '</b><span class="sub">' + (s.switched_on ? 'Checked each run' : 'Off: not in the price check, checked by hand') + '</span></div>' +
              '<button class="btn switch" type="button" data-act="switch" data-store="' + esc(s.store) + '" aria-pressed="' + s.switched_on + '"' + (state.busy ? ' disabled' : '') + '>' + (s.switched_on ? 'On' : 'Off') + '</button></div>';
       } else {
-        h += '<div class="srow"><div><b>' + esc(s.store) + '</b><span class="sub">Not in the price check: a usual store only</span></div></div>';
+        only.push(s.store);
+        srows += '<div class="srow"><div><b>' + esc(s.store) + '</b><span class="sub">Not in the price check: a usual store only</span></div></div>';
       }
     });
-    h += '</section>';
+    h += '<details class="storepanel"' + (state.storesOpen ? ' open' : '') + '><summary><span class="chev">Stores</span><b>Checked each run:</b> ' + esc(on.join(', ') || 'none') +
+         (off.length ? '<br><span class="offword">Off, check by hand: ' + esc(off.join(', ')) + '</span>' : '') +
+         (only.length ? '<div class="sub">Usual store only: ' + esc(only.join(', ')) + '</div>' : '') + '</summary>' +
+         '<div class="inner"><div class="sub">Switch a store off when its pages keep failing. You check it by hand, and Where to Buy says so.</div>' + srows + '</div></details>';
 
     if (!state.adding) h += '<button class="btn primary big" type="button" data-act="add-open">+ Add a page</button>';
     else h += addForm();
@@ -245,15 +281,30 @@
       if (!groups.length || groups[groups.length - 1].upc !== r.upc) groups.push({ upc: r.upc, rows: [] });
       groups[groups.length - 1].rows.push(r);
     });
-    groups.forEach(function (g) {
-      var r0 = g.rows[0];
-      var open = state.open[g.upc] || g.rows.some(function (r) { return r.id === state.editId; });
-      h += '<div class="phead"><span class="pn">' + esc(r0.product_name) + (r0.retired ? '<span class="tag bad">Retired</span>' : '') + '</span>' +
-           '<label class="sub">Usual store <select data-act="usual" data-upc="' + esc(r0.upc) + '" data-name="' + esc(r0.product_name) + '"' + (state.busy ? ' disabled' : '') + '>' + storeOptions(r0.usual_store) + '</select></label></div>';
-      h += '<details class="stores" data-upc="' + esc(g.upc) + '"' + (open ? ' open' : '') + '><summary>Stores (' + g.rows.length + '): ' +
-           esc(g.rows.map(function (r) { return r.store; }).join(', ')) + '</summary>' +
-           g.rows.map(function (r) { return state.editId === r.id ? editForm(r) : rowHtml(r); }).join('') + '</details>';
-    });
+    // Find, then one row per product under its catalog category, by name (E-72, E-73). A row being edited always shows.
+    if (groups.length) {
+      var f = state.find.trim().toLowerCase();
+      var shown = groups.filter(function (g) {
+        return !f || g.rows[0].product_name.toLowerCase().indexOf(f) >= 0 || g.rows.some(function (r) { return r.id === state.editId; });
+      });
+      h += '<div class="findrow"><input id="find" type="search" autocomplete="off" placeholder="Find a product on the list" aria-label="Find a product on the list" value="' + esc(state.find) + '"></div>';
+      h += '<div class="count">' + (f ? shown.length + ' of ' : '') + groups.length + (groups.length === 1 ? ' product' : ' products') + ', by category, then name</div>';
+      if (!shown.length) h += '<div class="plist" style="margin-top:0.75rem"><div class="nomatch"><b>No product on the list matches &ldquo;' + esc(state.find.trim()) + '&rdquo;.</b><br><span class="sub">Check the spelling, or add it with + Add a page above.</span></div></div>';
+      byCategory(shown).forEach(function (c) {
+        h += '<h2 class="catname">' + esc(c.cat) + ' <span class="scount">(' + c.groups.length + ')</span></h2><div class="plist">';
+        c.groups.forEach(function (g) {
+          var r0 = g.rows[0];
+          var open = state.open[g.upc] || g.rows.some(function (r) { return r.id === state.editId; });
+          var offHere = g.rows.filter(function (r) { return storeOff(r.store); }).map(function (r) { return r.store; });
+          h += '<details class="prow" data-upc="' + esc(g.upc) + '"' + (open ? ' open' : '') + '><summary><div class="pn">' + esc(r0.product_name) + (r0.retired ? '<span class="tag bad">Retired</span>' : '') + '</div>' +
+               '<div class="line">Usual: ' + esc(r0.usual_store) + ' · Checks ' + g.rows.length + ': ' + esc(g.rows.map(function (r) { return r.store; }).join(', ')) +
+               (offHere.length ? ' · <span class="offword">' + esc(offHere.join(', ')) + ' off</span>' : '') + '</div></summary><div class="inner">' +
+               '<label class="usualset">Usual store <select data-act="usual" data-upc="' + esc(r0.upc) + '" data-name="' + esc(r0.product_name) + '"' + (state.busy ? ' disabled' : '') + '>' + storeOptions(r0.usual_store) + '</select></label>' +
+               g.rows.map(function (r) { return state.editId === r.id ? editForm(r) : rowHtml(r); }).join('') + '</div></details>';
+        });
+        h += '</div>';
+      });
+    }
     // A redraw must never lose what was typed (a refused save keeps the form as it was).
     var keep = {};
     root.querySelectorAll('input[id], select[id]').forEach(function (el) { if (/^e-/.test(el.id)) keep[el.id] = el.value; });
@@ -344,9 +395,16 @@
 
   // Remember which product groups are open, so a redraw after a save doesn't fold them back up.
   root.addEventListener('toggle', function (e) {
-    if (e.target.matches && e.target.matches('details.stores')) state.open[e.target.getAttribute('data-upc')] = e.target.open;
+    if (e.target.matches && e.target.matches('details.prow')) state.open[e.target.getAttribute('data-upc')] = e.target.open;
+    if (e.target.matches && e.target.matches('details.storepanel')) state.storesOpen = e.target.open;
   }, true);
   root.addEventListener('input', function (e) {
+    if (e.target.id === 'find') {
+      state.find = e.target.value;
+      var fp = e.target.selectionStart;
+      render();
+      var fe = document.getElementById('find'); if (fe) { fe.focus(); fe.setSelectionRange(fp, fp); }
+    }
     if (e.target.id === 'a-prod') {
       state.filter = e.target.value;
       var pos = e.target.selectionStart;
@@ -369,8 +427,11 @@
     if (state.add && t.id === 'a-uom') state.add.uom = t.value;
     if (state.editId && /^e-/.test(t.id)) { state.editDirty = true; document.getElementById('e-save').disabled = state.busy; }
     if (t.getAttribute('data-act') === 'usual') {
-      var name = t.getAttribute('data-name'), store = t.value;
-      write({ operation: 'set_usual', upc: t.getAttribute('data-upc'), usual_store: store }, function () { return 'Usual store for ' + name + ': ' + store + '.'; });
+      var name = t.getAttribute('data-name'), store = t.value, upc = t.getAttribute('data-upc');
+      var prev = (rowsFor(upc)[0] || {}).usual_store;
+      // Undo in the banner sets the previous usual store back (E-72; style guide: reversible changes offer Undo).
+      write({ operation: 'set_usual', upc: upc, usual_store: store }, function () { return 'Usual store for ' + name + ': ' + store + '.'; }, null,
+        prev && prev !== store ? { body: { operation: 'set_usual', upc: upc, usual_store: prev }, text: 'Usual store for ' + name + ': ' + prev + ' again.' } : null);
     }
   });
   root.addEventListener('click', function (e) {

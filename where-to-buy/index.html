@@ -10,7 +10,7 @@
 <link rel="stylesheet" href="/shared/components.css">
 <link rel="stylesheet" href="/shared/ledger.css">
 <style>
-  /* Where to buy each product, from the last price check (PRD-007). */
+  /* Where to buy each product, from the last price check (PRD-007). Grouped by store, then category, then name (Behavior 9). */
   [hidden] { display: none !important; }
   main { max-width: 680px; margin: 0 auto; padding: 2.5rem 1rem 4rem; }
   header { margin-bottom: 1.25rem; border-bottom: 2px solid var(--ink); padding-bottom: 1rem; }
@@ -20,27 +20,44 @@
   .xlink { display: inline-block; min-height: 44px; line-height: 44px; font-size: 0.9rem; color: var(--ledger-green); }
   .asof { background: #fff; border: 1px solid var(--rule); border-left: 4px solid var(--ledger-green); border-radius: 6px; padding: 0.6rem 0.8rem; font-size: 0.9rem; margin-bottom: 1rem; }
   .asof .stores { color: var(--ink-soft); margin-top: 0.15rem; font-size: 0.84rem; }
+  .legend { color: var(--ink-soft); margin-top: 0.35rem; font-size: 0.82rem; }
   .unchecked { background: var(--status-error-soft); border: 1px solid var(--status-error); border-radius: 6px; padding: 0.6rem 0.8rem; margin-bottom: 1rem; font-size: 0.88rem; }
   .unchecked h2 { font-size: 1rem; margin: 0 0 0.25rem; color: var(--status-error); }
   .unchecked ul { margin: 0.4rem 0 0; padding-left: 1.1rem; }
   .unchecked li { margin-bottom: 0.4rem; }
-  .card { background: #fff; border: 1px solid var(--rule); border-radius: 6px; padding: 0.75rem; margin-bottom: 0.75rem; }
-  .pname { font-weight: 700; font-size: 1rem; margin-bottom: 0.35rem; }
-  .pick { font-size: 0.93rem; line-height: 1.4; margin: 0.25rem 0; }
-  .tag { display: inline-block; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 0.1rem 0.4rem; border-radius: 3px; margin-right: 0.35rem; background: var(--ledger-green-soft); color: var(--ledger-green); vertical-align: 1px; }
+  .since { background: #fff; border: 1px solid var(--rule); border-left: 4px solid var(--status-draft); border-radius: 6px; padding: 0.6rem 0.8rem; font-size: 0.88rem; margin-bottom: 1rem; }
+  .findrow input { width: 100%; box-sizing: border-box; font: inherit; font-size: 0.95rem; padding: 0.5rem 0.6rem; border: 1px solid var(--rule); border-radius: 4px; background: #fff; color: var(--ink); min-height: 44px; }
+  .count { font-size: 0.8rem; color: var(--ink-soft); margin: 0.35rem 0 0.25rem; }
+  .nomatch { background: #fff; border: 1px solid var(--rule); border-radius: 6px; padding: 0.9rem 0.75rem; font-size: 0.9rem; margin-top: 0.75rem; }
+  details.storegrp { margin-top: 1rem; }
+  details.storegrp > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 0.5rem; min-height: 44px; padding: 0.25rem 0; border-bottom: 2px solid var(--ink); }
+  details.catgrp > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 0.35rem; min-height: 44px; font-weight: 600; font-size: 0.95rem; }
+  details.storegrp > summary::-webkit-details-marker, details.catgrp > summary::-webkit-details-marker { display: none; }
+  details.storegrp > summary::before, details.catgrp > summary::before { content: '\25BE'; color: var(--ledger-green); width: 1rem; }
+  details.storegrp:not([open]) > summary::before, details.catgrp:not([open]) > summary::before { content: '\25B8'; }
+  .sname { font-family: var(--font-display); font-size: 1.15rem; font-weight: 700; }
+  .scount { font-size: 0.82rem; color: var(--ink-soft); font-weight: 400; }
+  .storebody { padding-top: 0.25rem; }
+  .storenone { margin-top: 1rem; padding: 0.6rem 0; border-bottom: 2px solid var(--rule); font-size: 0.9rem; color: var(--ink-soft); }
+  .storenone b { font-family: var(--font-display); font-size: 1.05rem; color: var(--ink); }
+  .card { background: #fff; border: 1px solid var(--rule); border-radius: 6px; padding: 0.6rem 0.75rem 0; margin-bottom: 0.5rem; }
+  .pname { font-weight: 700; font-size: 1rem; margin-bottom: 0.15rem; }
+  .best { font-size: 0.95rem; line-height: 1.35; }
+  .save { display: inline-block; font-size: 0.8rem; font-weight: 600; color: var(--ledger-green); background: var(--ledger-green-soft); border-radius: 999px; padding: 0.05rem 0.5rem; white-space: nowrap; }
+  .alt { font-size: 0.88rem; margin-top: 0.15rem; }
+  .tag { display: inline-block; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 0.1rem 0.4rem; border-radius: 3px; background: var(--ledger-green-soft); color: var(--ledger-green); vertical-align: 1px; }
   .tag.ship { background: var(--status-draft-soft); color: #8a5a10; }
   .tag.bad { background: var(--status-error-soft); color: var(--status-error); }
   .tag.hand, .tag.usual { background: var(--paper); color: var(--ink-soft); border: 1px solid var(--rule); }
   .price { font-weight: 700; white-space: nowrap; }
-  .sub { color: var(--ink-soft); font-size: 0.82rem; }
-  .usual-line { font-size: 0.85rem; margin-top: 0.4rem; padding-top: 0.4rem; border-top: 1px dashed var(--rule); }
-  details { margin-top: 0.5rem; }
-  summary { cursor: pointer; font-size: 0.86rem; color: var(--ledger-green); font-weight: 600; min-height: 44px; line-height: 44px; }
+  .sub { color: var(--ink-soft); font-size: 0.82rem; line-height: 1.4; }
+  details.more { margin-top: 0.1rem; }
+  details.more > summary { cursor: pointer; font-size: 0.82rem; color: var(--ledger-green); font-weight: 600; min-height: 44px; line-height: 44px; }
   table.t { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
   table.t th { text-align: left; color: var(--ink-soft); font-weight: 600; border-bottom: 1px solid var(--rule); padding: 0.25rem 0.3rem; }
   table.t td { padding: 0.35rem 0.3rem; border-bottom: 1px solid var(--rule); vertical-align: top; overflow-wrap: anywhere; }
   table.t td.n { white-space: nowrap; }
-  .hist { font-size: 0.82rem; color: var(--ink-soft); margin-top: 0.5rem; line-height: 1.5; }
+  .hist { font-size: 0.82rem; color: var(--ink-soft); margin: 0.5rem 0 0.6rem; line-height: 1.5; }
   .hist b { color: var(--ink); }
   .empty { color: var(--ink-soft); padding: 1.25rem 0; text-align: center; }
 </style>
@@ -63,6 +80,9 @@
   // config.js declares API_KEY. Results come from CARTA - Read Results, which calls CARTA - Build Results.
   var RESULTS_API = 'https://randysmith42.app.n8n.cloud/webhook/carta/results';
   var root = document.getElementById('content');
+  // closed: the stores and categories collapsed on this visit only. A reload opens them all again, so a collapsed
+  // store can't hide next week's deal (E-68).
+  var state = { items: null, find: '', closed: {} };
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; });
@@ -90,14 +110,29 @@
   }
   function pack(l) { return l.units + ' × ' + num(l.unit_size) + ' ' + l.uom; }
   function dealBits(l) { return l.deal_text ? esc(l.deal_text) + (l.deal_ends ? ', ends ' + esc(central(l.deal_ends, false)) : '') : ''; }
+  function byName(a, b) { return a.localeCompare(b); }
+  function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
 
-  function pickLine(tag, cls, l, none) {
-    if (!l) return '<div class="pick"><span class="tag ' + cls + '">' + tag + '</span>' + none + '</div>';
-    var bits = [esc(pack(l)) + ' at ' + money(l.pack_price)];
-    if (l.deal_text) bits.push(dealBits(l));
-    if (ways(l.availability)) bits.push(esc(ways(l.availability)));
-    return '<div class="pick"><span class="tag ' + cls + '">' + tag + '</span><b>' + esc(l.store) + '</b> <span class="price">' + money(l.unit_price) + ' each</span>' +
-      '<div class="sub">' + bits.join(' · ') + '</div></div>';
+  // Catalog category; a missing one shows as Other, after every named category (E-73).
+  function catOf(p) { var c = String(p.category == null ? '' : p.category).trim(); return c || 'Other'; }
+  function byCategory(list) {
+    var cats = {};
+    list.forEach(function (p) { var c = catOf(p); (cats[c] = cats[c] || []).push(p); });
+    return Object.keys(cats).sort(function (a, b) { return (a === 'Other') - (b === 'Other') || byName(a, b); }).map(function (c) {
+      return { cat: c, items: cats[c].sort(function (a, b) { return byName(a.name, b.name); }) };
+    });
+  }
+  // What buying at the lowest store saves per unit against the usual store (E-66). Worked from the prices as shown, to the
+  // cent, so the card's own numbers add up: an exact price with a half cent would otherwise make the saving a cent off
+  // the shown difference. None when the usual store
+  // is the lowest, isn't on the list, wasn't checked, or the shown prices are equal.
+  function cents(n) { return Math.round(Number(n) * 100); }
+  function saving(p) {
+    var u = p.usual || {};
+    if (!p.lowest || p.lowest.store === p.usual_store || u.state !== 'checked' || !(Number(u.unit_price) > 0)) return null;
+    var d = cents(u.unit_price) - cents(p.lowest.unit_price);
+    if (!(d >= 1)) return null;
+    return { each: d / 100, pct: Math.round(100 * d / cents(u.unit_price)) };
   }
   function usualLine(p) {
     var u = p.usual || {};
@@ -106,7 +141,8 @@
     if (u.state === 'by_hand') return 'Usual store: ' + esc(p.usual_store) + ', checked by hand this run';
     if (u.state === 'not_in_run') return 'Usual store: ' + esc(p.usual_store) + ', not in the last run';
     if (u.state === 'unchecked') return 'Usual store: ' + esc(p.usual_store) + ', unchecked this run (' + esc(u.reason) + ')';
-    if (p.lowest && p.lowest.store === p.usual_store) return 'Your usual store has the lowest price.';
+    if (p.lowest && p.lowest.store === p.usual_store) return '';                                  // the price line says so
+    if (p.lowest_no_ship && p.lowest_no_ship.store === p.usual_store && !p.same) return '';        // the without-shipping line says so
     return 'Usual store: ' + esc(p.usual_store) + ', ' + money(u.unit_price) + ' each';
   }
   function rowCells(p, l) {
@@ -125,8 +161,49 @@
       '<br><b>Last deal:</b> ' + (p.last_deal ? esc(p.last_deal.text) + ' at ' + esc(p.last_deal.store) + ', ' + esc(day(p.last_deal.run_date)) : 'none seen yet') +
       '<br><b>Next likely deal:</b> ' + (p.next_deal ? esc(p.next_deal.store) + ' around ' + esc(day(p.next_deal.date)) : 'not enough history') + '</div>';
   }
+  function detailsHtml(p) {
+    return '<details class="more"><summary>All stores, history</summary><table class="t"><tr><th>Store</th><th>Pack</th><th>Each</th><th>Get it</th></tr>' +
+      (p.rows || []).map(function (l) { return rowCells(p, l); }).join('') + '</table>' + history(p) + '</details>';
+  }
+  // One product under its lowest store: the price, what it saves, the pack and deal, and the way to get it without shipping
+  // when the lowest needs it (E-66, E-67).
+  function card(p) {
+    var l = p.lowest, s = saving(p), w = ways(l.availability);
+    var h = '<section class="card" data-upc="' + esc(p.upc) + '"><div class="pname">' + esc(p.name) + '</div>' +
+      '<div class="best"><span class="price">' + money(l.unit_price) + ' each</span>' + (w === 'ships only' ? ' <span class="tag ship">ships</span>' : '') +
+      (l.store === p.usual_store ? ' <span class="sub">· your usual store</span>' : '') +
+      (s ? ' <span class="save">Save ' + money(s.each) + ' (' + s.pct + '%)</span>' : '') + '</div>';
+    var bits = [esc(pack(l)) + ' at ' + money(l.pack_price)];
+    if (l.deal_text) bits.push(dealBits(l));
+    if (w) bits.push(esc(w));
+    if (!p.same) bits.push('before shipping fees and order minimums');
+    h += '<div class="sub">' + bits.join(' · ') + '</div>';
+    if (!p.same) {
+      var n = p.lowest_no_ship;
+      h += '<div class="alt">' + (n ? 'Without shipping: <b>' + esc(n.store) + '</b> ' + money(n.unit_price) + ' each' + (n.store === p.usual_store ? ', your usual store' : '') : 'None available without shipping.') + '</div>';
+    }
+    var u = usualLine(p);
+    if (u) h += '<div class="sub">' + u + '</div>';
+    return h + detailsHtml(p) + '</section>';
+  }
+  function noPriceCard(p) {
+    var u = usualLine(p);
+    return '<section class="card" data-upc="' + esc(p.upc) + '"><div class="pname">' + esc(p.name) + '</div><div class="sub">No price this run.' + (u ? ' ' + u + '.' : '') + '</div>' + detailsHtml(p) + '</section>';
+  }
+  function group(key, title, count, body, extra) {
+    return '<details class="storegrp" data-key="' + esc(key) + '"' + (state.closed[key] ? '' : ' open') + '><summary><span class="sname">' + title + '</span> <span class="scount">' +
+      plural(count, 'product', 'products') + '</span></summary><div class="storebody">' + (extra || '') + body + '</div></details>';
+  }
+  function categories(storeKey, list) {
+    return byCategory(list).map(function (g) {
+      var key = storeKey + '|' + g.cat;
+      return '<details class="catgrp" data-key="' + esc(key) + '"' + (state.closed[key] ? '' : ' open') + '><summary>' + esc(g.cat) + ' <span class="scount">(' + g.items.length + ')</span></summary>' +
+        g.items.map(card).join('') + '</details>';
+    }).join('');
+  }
 
-  function render(items) {
+  function render() {
+    var items = state.items;
     var run = items.filter(function (i) { return i.kind === 'run'; })[0];
     if (!run || run.none) {
       root.className = 'empty';
@@ -135,7 +212,8 @@
     }
     var h = '<div class="asof">Prices as of <b>' + esc(central(run.posted_at, true)) + '</b><div class="stores">Checked: ' + esc((run.stores_checked || []).join(', ') || 'none') +
       ((run.stores_not_checked || []).length ? ' · Not checked: ' + esc(run.stores_not_checked.join(', ')) : '') +
-      ((run.stores_by_hand || []).length ? ' · Checked by hand: ' + esc(run.stores_by_hand.join(', ')) : '') + '</div></div>';
+      ((run.stores_by_hand || []).length ? ' · Checked by hand: ' + esc(run.stores_by_hand.join(', ')) : '') + '</div>' +
+      '<div class="legend">Each product is under the store with its lowest price. &ldquo;Save&rdquo; is per bottle, can or bar, against your usual store.</div></div>';
     var un = items.filter(function (i) { return i.kind === 'unchecked'; });
     if (un.length) {
       // A store-level failure (bot check, wrong store) is one line per store with its pages beneath (E-04).
@@ -154,23 +232,63 @@
           return '<li><b>' + esc(g.store) + ': ' + esc(g.reason) + '</b> (' + pages(g.names.length) + ')' + why + '<div class="sub">Pages: ' + esc(g.names.join(', ')) + '</div></li>';
         }).join('') + '</ul></section>';
     }
-    items.filter(function (i) { return i.kind === 'product'; }).forEach(function (p) {
-      h += '<section class="card"><div class="pname">' + esc(p.name) + '</div>';
-      if (!p.lowest) h += '<div class="pick sub">No price this run.</div>';
-      else if (p.same) h += pickLine('Lowest price', '', p.lowest, '') + '<div class="sub">Also the lowest without shipping.</div>';
-      else h += pickLine('Lowest price', 'ship', p.lowest, '') + '<div class="sub">Before shipping fees and order minimums.</div>' +
-        pickLine('No shipping', '', p.lowest_no_ship, 'none available without shipping');
-      h += '<div class="usual-line">' + usualLine(p) + '</div>';
-      h += '<details><summary>All stores, history</summary><table class="t"><tr><th>Store</th><th>Pack</th><th>Each</th><th>Get it</th></tr>' +
-        p.rows.map(function (l) { return rowCells(p, l); }).join('') + '</table>' + history(p) + '</details></section>';
+
+    var prods = items.filter(function (i) { return i.kind === 'product'; });
+    // A product whose every row came onto the list after this run is named here, not dropped (E-70).
+    var added = prods.filter(function (p) { return !p.lowest && (p.rows || []).length && p.rows.every(function (l) { return l.state === 'not_in_run'; }); });
+    var priced = prods.filter(function (p) { return p.lowest; });
+    var noPrice = prods.filter(function (p) { return !p.lowest && added.indexOf(p) < 0; });
+    if (added.length) {
+      h += '<div class="since"><b>Added since this run:</b> ' + esc(added.map(function (p) { return p.name; }).sort(byName).join('; ')) + '. ' +
+        (added.length === 1 ? 'It shows' : 'They show') + ' here after the next price check.</div>';
+    }
+
+    var f = state.find.trim().toLowerCase();
+    var match = function (p) { return !f || String(p.name).toLowerCase().indexOf(f) >= 0; };
+    var shownPriced = priced.filter(match), shownNo = noPrice.filter(match);
+    var total = priced.length + noPrice.length, shown = shownPriced.length + shownNo.length;
+    h += '<div class="findrow"><input id="find" type="search" autocomplete="off" placeholder="Find a product" aria-label="Find a product" value="' + esc(state.find) + '"></div>';
+    h += '<div class="count">' + (f ? shown + ' of ' + plural(total, 'product', 'products') : plural(total, 'product', 'products')) + ', by store, category, then name</div>';
+    if (f && !shown) {
+      h += '<div class="nomatch"><b>No product matches &ldquo;' + esc(state.find.trim()) + '&rdquo;.</b><br><span class="sub">Check the spelling. A product shows here only if it&rsquo;s on the Price Check List and was in the last run.</span></div>';
+    }
+
+    // Stores by name: every store checked this run, plus any store a lowest price came from (E-49).
+    var stores = (run.stores_checked || []).slice();
+    priced.forEach(function (p) { if (stores.indexOf(p.lowest.store) < 0) stores.push(p.lowest.store); });
+    stores.sort(byName).forEach(function (store) {
+      var mine = shownPriced.filter(function (p) { return p.lowest.store === store; });
+      if (!mine.length) {
+        if (!f && !priced.some(function (p) { return p.lowest.store === store; })) h += '<div class="storenone"><b>' + esc(store) + '</b>: not the lowest for anything this run.</div>';
+        return;
+      }
+      var allShip = mine.every(function (p) { return !p.same; });
+      h += group(store, esc(store), mine.length, categories(store, mine), allShip ? '<div class="sub">Prices here are before shipping fees and order minimums.</div>' : '');
     });
+    if (shownNo.length) {
+      h += group('~none','No Price This Run', shownNo.length, shownNo.sort(function (a, b) { return byName(a.name, b.name); }).map(noPriceCard).join(''),
+        '<div class="sub">Every line for these was unchecked or checked by hand this run.</div>');
+    }
     root.className = '';
     root.innerHTML = h;
   }
 
+  // Remember what's collapsed on this visit, so typing in the find box doesn't open it all again.
+  root.addEventListener('toggle', function (e) {
+    var t = e.target;
+    if (t.matches && t.matches('details.storegrp, details.catgrp')) state.closed[t.getAttribute('data-key')] = !t.open;
+  }, true);
+  root.addEventListener('input', function (e) {
+    if (e.target.id !== 'find') return;
+    state.find = e.target.value;
+    var pos = e.target.selectionStart;
+    render();
+    var el = document.getElementById('find'); if (el) { el.focus(); el.setSelectionRange(pos, pos); }
+  });
+
   fetch(RESULTS_API, { headers: { 'X-API-Key': API_KEY } })
     .then(function (r) { return r.json().catch(function () { return {}; }).then(function (b) { if (!r.ok) throw new Error(b.error || ('HTTP ' + r.status)); return b; }); })
-    .then(function (items) { render(Array.isArray(items) ? items : []); })
+    .then(function (items) { state.items = Array.isArray(items) ? items : []; render(); })
     .catch(function (err) {
       root.className = 'empty'; root.textContent = '';
       BBMessages.show('error', 'Couldn\'t load Where to Buy. Reload the page to try again.', { why: err.message });
