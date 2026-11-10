@@ -188,6 +188,13 @@
   .switch:focus-visible { outline: 2px solid var(--ledger-green); outline-offset: 2px; border-radius: 6px; }
   .switch-state { font-size: 0.82rem; color: var(--ink-soft); min-width: 3.5rem; }
   .switch-err { font-size: 0.82rem; color: var(--status-error); font-weight: 600; }
+
+  /* Where to buy: CARTA's lowest store for this product (PRD-007). */
+  .wtb { font-size: 0.82rem; color: var(--ink-soft); margin-top: 0.55rem; overflow-wrap: anywhere; }
+  .wtb b { color: var(--ink); }
+  .wtb a { color: var(--ledger-green); font-weight: 600; display: inline-block; padding: 0.35rem 0; }
+  .wtb a:focus-visible { outline: 2px solid var(--ledger-green); outline-offset: 2px; }
+  .wtb .save { color: var(--ledger-green); font-weight: 600; }
 </style>
 </head>
 <body>
@@ -239,10 +246,12 @@
   // pattern as Tax & Revenue Share Obligations and the other CRUD tools.
   var API_BASE = 'https://randysmith42.app.n8n.cloud/webhook/reorder-signal';
 
-  var state = { rows: [], view: 'needs_attention', category: null, filterText: '', statusFilters: [], loading: false, error: null, generatedAt: null, groupOpen: false, hashHandled: false, saving: false, undo: null, bannerTimer: null };
+  var state = { rows: [], view: 'needs_attention', category: null, filterText: '', statusFilters: [], loading: false, error: null, generatedAt: null, groupOpen: false, hashHandled: false, saving: false, undo: null, bannerTimer: null, buy: {}, buyRun: null };
   // The Don't reorder switch calls the endpoint beside this one, behind the same key.
   var SWITCH_URL = API_BASE.replace('/reorder-signal', '/inventory/set-reorder-off');
   var BUCKET_CAP_DAYS = 10;
+  // CARTA's latest price check (PRD-007), read once per load and matched to the cards by UPC in memory.
+  var RESULTS_API = API_BASE.replace('/reorder-signal', '/carta/results');
 
   var els = {
     asOf: document.getElementById('asOf'),
@@ -368,6 +377,56 @@
     );
   }
 
+  // ---- Where to buy (PRD-007): the store with the lowest price per unit in the latest price check ----
+  function money(n) { return '$' + Number(n).toFixed(2); }
+  // "Tue 11/10" in Central; a date-only value is read as midday Central so it never slips a day.
+  function shortDay(value, dateOnly) {
+    var d = new Date(dateOnly ? value + 'T17:00:00Z' : value);
+    if (!value || isNaN(d.getTime())) return '';
+    var p = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', weekday: 'short', month: 'numeric', day: 'numeric' }).formatToParts(d);
+    var g = function (t) { return (p.filter(function (x) { return x.type === t; })[0] || {}).value; };
+    return g('weekday') + ' ' + g('month') + '/' + g('day');
+  }
+  // The same Save as Where to Buy (E-66): worked from the prices as shown, to the cent, against the usual store.
+  // None when the usual store is the lowest, wasn't checked, or the shown prices are equal.
+  function cents(n) { return Math.round(Number(n) * 100); }
+  function saving(p) {
+    var u = p.usual || {};
+    if (!p.lowest || p.lowest.store === p.usual_store || u.state !== 'checked' || !(Number(u.unit_price) > 0)) return null;
+    var d = cents(u.unit_price) - cents(p.lowest.unit_price);
+    return d >= 1 ? d / 100 : null;
+  }
+  function setPrices(items) {
+    state.buy = {}; state.buyRun = null;
+    if (!Array.isArray(items)) return;
+    var run = items.filter(function (i) { return i.kind === 'run'; })[0];
+    if (!run || run.none) return;
+    state.buyRun = run;
+    items.forEach(function (i) { if (i.kind === 'product' && i.upc) state.buy[String(i.upc)] = i; });
+  }
+  // One line per card: the lowest store and its price each, what it saves, the deal and when it ends, and the check's date.
+  // A product not on the Price Check List gets no line; exact UPC only, no look-alikes.
+  function whereToBuyHTML(row) {
+    var p = state.buyRun && state.buy[String(row.product_id)];
+    if (!p) return '';
+    var head = '<div class="wtb"><a href="/where-to-buy/">Where to buy</a>: ';
+    var when = shortDay(state.buyRun.run_date, true);
+    var l = p.lowest;
+    if (!l) {
+      var notYet = (p.rows || []).length && p.rows.every(function (r) { return r.state === 'not_in_run'; });
+      return head + (notYet ? 'not in a price check yet' : 'no price in the ' + escapeHtml(when) + ' check') + '</div>';
+    }
+    var a = l.availability || {};
+    var shipsOnly = a.ship && !a.in_store && !a.pickup && !a.delivery;
+    var bits = ['<b>' + escapeHtml(l.store) + '</b> ' + money(l.unit_price) + ' each' + (shipsOnly ? ' (ships)' : '')];
+    var s = saving(p);
+    if (l.store === p.usual_store) bits.push('your usual store');
+    else if (s) bits.push('<span class="save">Save ' + money(s) + '</span> vs ' + escapeHtml(p.usual_store));
+    if (l.deal_text) bits.push(escapeHtml(l.deal_text) + (l.deal_ends && shortDay(l.deal_ends) ? ', ends ' + escapeHtml(shortDay(l.deal_ends)) : ''));
+    bits.push('prices ' + escapeHtml(when));
+    return head + bits.join(' · ') + '</div>';
+  }
+
   function rowCardHTML(row) {
     var runway = row.days_runway !== null
       ? Math.floor(row.days_runway) + 'd of ' + row.reorder_floor_days + 'd floor'
@@ -388,6 +447,7 @@
           '<div class="stat"><span class="stat-label">Restock Qty</span><span class="stat-value">' + row.suggested_reorder_qty + '</span></div>' +
           '<div class="stat"><span class="stat-label">Velocity</span><span class="stat-value">' + formatRate(velocity(row)) + '</span></div>' +
         '</div>' +
+        whereToBuyHTML(row) +
         switchHTML(row) +
         trendInfoHTML(row) +
       '</div>'
@@ -426,6 +486,7 @@
           '<div class="stat"><span class="stat-label">Stock</span><span class="stat-value">' + row.stock_at_last_run + '</span></div>' +
           '<div class="stat"><span class="stat-label">Velocity</span><span class="stat-value">' + formatRate(velocity(row)) + '</span></div>' +
         '</div>' +
+        whereToBuyHTML(row) +
         switchHTML(row) +
         trendInfoHTML(row) +
       '</div>'
@@ -700,11 +761,16 @@
     state.loading = true;
     state.error = null;
     render();
+    // The prices are read beside the numbers, not after them. A failed read only leaves the where-to-buy lines off.
+    var prices = fetch(RESULTS_API, { method: 'GET', headers: { 'X-API-Key': API_KEY } })
+      .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
+      .catch(function () { return null; });
     fetch(API_BASE, { method: 'GET', headers: { 'X-API-Key': API_KEY } })
       .then(function (res) {
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return res.json();
       })
+      .then(function (data) { return prices.then(function (items) { setPrices(items); return data; }); })
       .then(function (data) {
         // The calculator used to send "not_tracked" for what is now "low_sales"; read either, so deploy order doesn't matter.
         state.rows = (data.rows || []).map(function (r) {
