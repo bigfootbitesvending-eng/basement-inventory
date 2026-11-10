@@ -62,6 +62,7 @@
   .built a { color: var(--ledger-green); }
   .built.ok { color: var(--ledger-green); font-weight: 600; }
   .built.bad { color: var(--status-error); font-weight: 600; }
+  .built.warn { color: #8a5a10; font-weight: 600; }
   .btn.next { flex: 1 1 100%; font-family: var(--font-display); font-size: 1rem; border-radius: 6px; }
   .done { padding: 0.75rem; background: var(--ledger-green-soft); border-radius: 6px; margin-top: 0.75rem; }
 </style>
@@ -314,8 +315,13 @@
     h += '<div class="field"><label for="a-item">' + esc(spec.label) + '</label><input id="a-item" autocomplete="off" placeholder="' + esc(spec.ph) + '" value="' + esc(a.item) + '">';
     if (a.store === 'Kroger') {
       var want = krogerId(state.pick.upc);
-      h += '<div class="hint">Kroger needs its full link. Its item id, ' + want + ', comes from the UPC.</div>' +
-        (a.item ? (it.id === want ? '<div class="built ok">Item id ' + it.id + ' matches the UPC.</div>' : '<div class="built bad">' + (it.id ? 'This link is item ' + esc(it.id) + ', not ' + want + '. Check it\'s the right product.' : 'That isn\'t a Kroger product link.') + '</div>') : '');
+      // A different id isn't refused: a store can sell another package of the same product under its own UPC
+      // (Mountain Dew 6 pk is 012000504082, an alias of the catalog's 012000344985). The worker still checks the page's
+      // item id, count and size against the row on every run.
+      h += '<div class="hint">Kroger needs its full link. From the UPC its item id would be ' + want + '.</div>' +
+        (a.item ? (!it.id ? '<div class="built bad">That isn\'t a Kroger product link.</div>'
+          : it.id === want ? '<div class="built ok">Item id ' + it.id + ' matches the UPC.</div>'
+          : '<div class="built warn">This link is item ' + esc(it.id) + ', not ' + want + '. That\'s fine if Kroger sells this pack under its own UPC: open the link and check it\'s ' + esc(state.pick.name) + ', then save.</div>') : '');
     } else {
       h += it.link ? '<div class="built">Link: <a href="' + esc(it.link) + '" target="_blank" rel="noopener">' + esc(it.link) + '</a> · open it to check</div>' : '<div class="hint">The link is built from this.</div>';
     }
@@ -389,7 +395,6 @@
     } else if (act === 'add-save' || act === 'add-next') {
       var a = state.add, it = readItem(a.store, a.item), pick = state.pick, goNext = act === 'add-next';
       if (!it.id || !it.link) { BBMessages.show('error', 'Nothing changed. ' + (a.store === 'Kroger' ? 'Paste the Kroger product page link.' : 'Type the ' + ITEM[a.store].label.toLowerCase() + ', or paste the link.')); return; }
-      if (a.store === 'Kroger' && it.id !== krogerId(pick.upc)) { BBMessages.show('error', 'Nothing changed. That Kroger link is item ' + it.id + ', not ' + krogerId(pick.upc) + ' from the UPC. Check it\'s the right product.'); return; }
       var body = { operation: 'create', upc: pick.upc, store: a.store, page_url: it.link, store_item_id: it.id, units_per_pack: Number(a.units), unit_size: Number(a.size), unit_size_uom: a.uom };
       var label = pick.name + ' at ' + a.store, keep = { units: a.units, size: a.size, uom: a.uom };
       write(body, function (changed) {
