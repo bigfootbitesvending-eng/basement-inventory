@@ -101,6 +101,7 @@
 
 <script src="/shared/config.js"></script>
 <script src="/shared/messages.js"></script>
+<script src="/shared/groups.js"></script>
 <script>
 (function () {
   // config.js (loaded above) declares API_KEY. The list API is CARTA - List CRUD API; products come from Inventory - List Products.
@@ -181,14 +182,11 @@
     return a;
   }
   function host(url) { try { return new URL(url).hostname; } catch (e) { return url; } }
-  // Catalog category; a missing one shows as Other, after every named category (E-73). Same order as Where to Buy.
-  function catOf(name) { var c = String(name == null ? '' : name).trim(); return c || 'Other'; }
+  // By catalog category, a missing one as Other after every named category, then by name (E-73; /shared/groups.js,
+  // the same order as Where to Buy).
   function byCategory(groups) {
-    var cats = {};
-    groups.forEach(function (g) { var c = catOf(g.rows[0].category); (cats[c] = cats[c] || []).push(g); });
-    return Object.keys(cats).sort(function (a, b) { return (a === 'Other') - (b === 'Other') || a.localeCompare(b); }).map(function (c) {
-      return { cat: c, groups: cats[c].sort(function (a, b) { return a.rows[0].product_name.localeCompare(b.rows[0].product_name); }) };
-    });
+    return BBGroups.byName(groups, function (g) { return g.rows[0].category; }, function (g) { return g.rows[0].product_name; })
+      .map(function (c) { return { cat: c.key, groups: c.items }; });
   }
   function num(n) { return String(Number(n)); }
 

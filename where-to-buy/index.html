@@ -75,6 +75,7 @@
 
 <script src="/shared/config.js"></script>
 <script src="/shared/messages.js"></script>
+<script src="/shared/groups.js"></script>
 <script>
 (function () {
   // config.js declares API_KEY. Results come from CARTA - Read Results, which calls CARTA - Build Results.
@@ -113,14 +114,10 @@
   function byName(a, b) { return a.localeCompare(b); }
   function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
 
-  // Catalog category; a missing one shows as Other, after every named category (E-73).
-  function catOf(p) { var c = String(p.category == null ? '' : p.category).trim(); return c || 'Other'; }
+  // By catalog category, a missing one as Other after every named category, then by name (E-73; /shared/groups.js).
   function byCategory(list) {
-    var cats = {};
-    list.forEach(function (p) { var c = catOf(p); (cats[c] = cats[c] || []).push(p); });
-    return Object.keys(cats).sort(function (a, b) { return (a === 'Other') - (b === 'Other') || byName(a, b); }).map(function (c) {
-      return { cat: c, items: cats[c].sort(function (a, b) { return byName(a.name, b.name); }) };
-    });
+    return BBGroups.byName(list, function (p) { return p.category; }, function (p) { return p.name; })
+      .map(function (g) { return { cat: g.key, items: g.items }; });
   }
   // What buying at the lowest store saves per unit against the usual store (E-66). Worked from the prices as shown, to the
   // cent, so the card's own numbers add up: an exact price with a half cent would otherwise make the saving a cent off
