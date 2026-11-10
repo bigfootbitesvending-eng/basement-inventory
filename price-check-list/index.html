@@ -108,8 +108,8 @@
   var PRODUCTS_API = 'https://randysmith42.app.n8n.cloud/webhook/inventory/products';
   // The units the catalog's names use (oz 170, ct 33, ml 1, gal 1). Fluid and weight ounces are one unit.
   var UOMS = ['oz', 'ct', 'ml', 'gal'];
-  // Stores are offered in this order when adding; the next store not yet on the list comes first.
-  var ADD_ORDER = ['Kroger', 'Walmart', "Sam's", 'Amazon'];
+  // Stores the price check reads, by name: the add form's chips in this order, and the first one not yet on the list is offered first.
+  function addOrder() { return state.stores.filter(function (x) { return x.swept; }).map(function (x) { return x.store; }).sort(function (a, b) { return a.localeCompare(b); }); }
 
   var state = { stores: [], rows: [], products: null, adding: false, editId: null, busy: false, undo: null, pick: null, filter: '', add: null, open: {}, find: '', storesOpen: false };
   var root = document.getElementById('content');
@@ -162,9 +162,7 @@
   function rowsFor(upc) { return state.rows.filter(function (r) { return r.upc === upc; }); }
   function storesLeft(upc) {
     var have = rowsFor(upc).map(function (r) { return r.store; });
-    var swept = state.stores.filter(function (x) { return x.swept; }).map(function (x) { return x.store; });
-    var order = ADD_ORDER.filter(function (x) { return swept.indexOf(x) >= 0; }).concat(swept.filter(function (x) { return ADD_ORDER.indexOf(x) < 0; }));
-    return order.filter(function (x) { return have.indexOf(x) < 0; });
+    return addOrder().filter(function (x) { return have.indexOf(x) < 0; });
   }
   // What the add form starts with for a product: size and units from its other rows, else size from its name.
   function startAdd(pick, keep) {
@@ -356,8 +354,7 @@
       return h + '<div class="done">On the list at every store the price check reads.</div><div class="actions"><button class="btn" type="button" data-act="add-cancel">Done</button>' +
         '<button class="btn" type="button" data-act="unpick">Add another product</button></div></section>';
     }
-    var swept = state.stores.filter(function (x) { return x.swept; }).map(function (x) { return x.store; });
-    var order = ADD_ORDER.filter(function (x) { return swept.indexOf(x) >= 0; }).concat(swept.filter(function (x) { return ADD_ORDER.indexOf(x) < 0; }));
+    var order = addOrder();
     h += '<div class="field"><label>Store</label><div class="chips">' + order.map(function (x) {
       var on = left.indexOf(x) < 0;
       return '<button class="chip" type="button" data-act="add-store" data-store="' + esc(x) + '" aria-pressed="' + (x === a.store) + '"' + (on ? ' disabled title="Already on the list"' : '') + '>' + esc(x) + '</button>';
