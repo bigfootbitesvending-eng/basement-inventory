@@ -159,6 +159,9 @@
     var id = m ? m[1] : (/^https?:/i.test(raw) || /\s/.test(raw) ? null : raw);
     return id ? { id: id, link: spec.build + id + (spec.tail || '') } : { id: null, link: null };
   }
+  // Stores write a box's size two ways ("6 pk / 16.9 fl oz" each, "11.2 oz 2 pack" in all), and the price check reads only
+  // the first. A box the machine sells as one goes in as ct, where the size is never compared (BUG-083).
+  var BOX_HINT = 'A box the machine sells as one, like a 2-pizza box, is 1 × 2 ct.';
   function rowsFor(upc) { return state.rows.filter(function (r) { return r.upc === upc; }); }
   function storesLeft(upc) {
     var have = rowsFor(upc).map(function (r) { return r.store; });
@@ -323,7 +326,7 @@
     return '<div class="grid2"><div class="field"><label for="' + prefix + 'units">Units per pack</label><select id="' + prefix + 'units">' + packOptions(r ? r.units_per_pack : 0) + '</select></div>' +
       '<div class="field"><label for="' + prefix + 'size">Unit size</label><div class="grid2"><input id="' + prefix + 'size" inputmode="decimal" value="' + esc(r ? num(r.unit_size) : '') + '">' +
       '<select id="' + prefix + 'uom">' + uomOptions(r ? r.unit_size_uom : '') + '</select></div></div></div>' +
-      '<div class="hint">How many things you sell in what you buy. A 6-pack of bottles is 6. A Sam\'s case of 48 bars is 48. The price check skips a page whose count or size differs.</div>';
+      '<div class="hint">How many things you sell in what you buy. A 6-pack of bottles is 6. A Sam\'s case of 48 bars is 48. ' + BOX_HINT + ' The price check skips a page whose count or size differs.</div>';
   }
   function editForm(r) {
     return '<div class="lrow"><div class="nm">' + esc(r.store) + '</div>' +
@@ -377,7 +380,7 @@
     h += '<div class="grid2"><div class="field"><label for="a-units">Units per pack</label><select id="a-units">' + packOptions(a.units) + '</select></div>' +
       '<div class="field"><label for="a-size">Unit size</label><div class="grid2"><input id="a-size" inputmode="decimal" value="' + esc(a.size) + '">' +
       '<select id="a-uom">' + uomOptions(a.uom) + '</select></div></div></div>' +
-      '<div class="hint">' + esc(a.from) + (a.store === "Sam's" ? ' Sam\'s sells cases: set the units per pack to the case count.' : '') + '</div>';
+      '<div class="hint">' + esc(a.from) + (a.store === "Sam's" ? ' Sam\'s sells cases: set the units per pack to the case count.' : '') + ' ' + BOX_HINT + '</div>';
     var next = left.filter(function (x) { return x !== a.store; })[0];
     h += '<div class="actions"><button class="btn" type="button" data-act="add-cancel">Cancel</button>' +
       '<button class="btn" type="button" data-act="add-save"' + (state.busy ? ' disabled' : '') + '>Save</button>' +
