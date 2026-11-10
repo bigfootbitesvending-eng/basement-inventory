@@ -210,6 +210,7 @@
     var h = '<div class="asof">Prices as of <b>' + esc(central(run.posted_at, true)) + '</b><div class="stores">Checked: ' + esc((run.stores_checked || []).join(', ') || 'none') +
       ((run.stores_not_checked || []).length ? ' · Not checked: ' + esc(run.stores_not_checked.join(', ')) : '') +
       ((run.stores_by_hand || []).length ? ' · Checked by hand: ' + esc(run.stores_by_hand.join(', ')) : '') + '</div>' +
+      (run.lines_rechecked > 0 && run.rechecked_at ? '<div class="stores">' + run.lines_rechecked + (run.lines_rechecked === 1 ? ' line' : ' lines') + ' rechecked ' + esc(central(run.rechecked_at, true)) + '</div>' : '') +
       '<div class="legend">Each product is under the store with its lowest price. &ldquo;Save&rdquo; is per bottle, can or bar, against your usual store.</div></div>';
     var un = items.filter(function (i) { return i.kind === 'unchecked'; });
     if (un.length) {
