@@ -409,7 +409,7 @@
   function whereToBuyHTML(row) {
     var p = state.buyRun && state.buy[String(row.product_id)];
     if (!p) return '';
-    var head = '<div class="wtb"><a href="/where-to-buy/">Where to buy</a>: ';
+    var head = '<div class="wtb"><a href="../where-to-buy/">Where to buy</a>: ';
     var when = shortDay(state.buyRun.run_date, true);
     var l = p.lowest;
     if (!l) {
