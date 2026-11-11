@@ -147,10 +147,16 @@
   // Paste a link or type an id: either way, read the id and build the link. Kroger needs its full link (its address needs the name).
   var ITEM = {
     Kroger: { label: 'Kroger page link', ph: 'Paste the Kroger product page link', re: /kroger\.com\/p\/[^/?#]+\/(\d{13})/ },
-    Walmart: { label: 'Walmart item number', ph: 'e.g. 10535170, or paste the link', re: /walmart\.com\/ip\/(?:[^/?#]+\/)?(\d{5,})/, build: 'https://www.walmart.com/ip/' },
-    "Sam's": { label: "Sam's item number", ph: 'e.g. 15098707355, or paste the link', re: /samsclub\.com\/(?:ip|p)\/(?:[^/?#]+\/)?(?:prod)?(\d{5,})/, build: 'https://www.samsclub.com/ip/' },
-    Amazon: { label: 'Amazon ASIN', ph: 'e.g. B000T9WM62, or paste the link', re: /amazon\.com\/(?:[^/?#]+\/)?(?:dp|gp\/product)\/([A-Z0-9]{10})/, build: 'https://www.amazon.com/dp/', tail: '/' }
+    Walmart: { label: 'Walmart item number', ph: 'e.g. 10535170, or paste the link', re: /walmart\.com\/ip\/(?:[^/?#]+\/)?(\d{5,})/, build: 'https://www.walmart.com/ip/', shape: /^\d{5,}$/, noun: 'item numbers', words: 'digits only, 5 or more' },
+    "Sam's": { label: "Sam's item number", ph: 'e.g. 15098707355, or paste the link', re: /samsclub\.com\/(?:ip|p)\/(?:[^/?#]+\/)?(?:prod)?(\d{5,})/, build: 'https://www.samsclub.com/ip/', shape: /^\d{5,}$/, noun: 'item numbers', words: 'digits only, 5 or more' },
+    Amazon: { label: 'Amazon ASIN', ph: 'e.g. B000T9WM62, or paste the link', re: /amazon\.com\/(?:[^/?#]+\/)?(?:dp|gp\/product)\/([A-Z0-9]{10})/, build: 'https://www.amazon.com/dp/', tail: '/', shape: /^[A-Za-z0-9]{10}$/, noun: 'ASINs', words: '10 letters and digits' }
   };
+  // A store item id of the wrong shape is warned about, never refused (Randy, 2026-11-11): the price check says when a page doesn't match.
+  function shapeWarn(store, id) {
+    var spec = ITEM[store];
+    if (!spec || !spec.shape || !id || spec.shape.test(String(id).trim())) return '';
+    return '<div class="built warn">' + esc(store) + ' ' + spec.noun + ' are ' + spec.words + '. This one isn\'t, so check it\'s the right id. You can still save it; if the page doesn\'t match, the price check will say so.</div>';
+  }
   function readItem(store, raw) {
     raw = String(raw || '').trim();
     var spec = ITEM[store];
@@ -329,7 +335,7 @@
   function editForm(r) {
     return '<div class="lrow"><div class="nm">' + esc(r.store) + '</div>' +
       '<div class="field"><label for="e-url">Product page</label><input id="e-url" value="' + esc(r.page_url) + '"></div>' +
-      '<div class="field"><label for="e-id">Store item id</label><input id="e-id" value="' + esc(r.store_item_id) + '"></div>' + packFields('e-', r) +
+      '<div class="field"><label for="e-id">Store item id</label><input id="e-id" data-store="' + esc(r.store) + '" value="' + esc(r.store_item_id) + '"><div id="e-id-warn">' + shapeWarn(r.store, r.store_item_id) + '</div></div>' + packFields('e-', r) +
       '<div class="hint">A new page link or item id keeps this row. A new units per pack or unit size starts a new row, and this one keeps its price history.</div>' +
       '<div class="actions"><button class="btn" type="button" data-act="edit-cancel">Cancel</button>' +
       '<button class="btn primary" type="button" id="e-save" data-act="edit-save" data-id="' + r.id + '"' + (state.editDirty && !state.busy ? '' : ' disabled') + '>Save</button></div></div>';
@@ -373,6 +379,7 @@
           : '<div class="built warn">This link is item ' + esc(it.id) + ', not ' + want + '. That\'s fine if Kroger sells this pack under its own UPC: open the link and check it\'s ' + esc(state.pick.name) + ', then save.</div>') : '');
     } else {
       h += it.link ? '<div class="built">Link: <a href="' + esc(it.link) + '" target="_blank" rel="noopener">' + esc(it.link) + '</a> · open it to check</div>' : '<div class="hint">The link is built from this.</div>';
+      h += shapeWarn(a.store, it.id);
     }
     h += '</div>';
     h += '<div class="grid2"><div class="field"><label for="a-units">Units per pack</label><select id="a-units">' + packOptions(a.units) + '</select></div>' +
@@ -416,6 +423,7 @@
       var it = document.getElementById('a-item'); if (it) { it.focus(); it.setSelectionRange(p2, p2); }
     }
     if (e.target.id === 'a-size' && state.add) state.add.size = e.target.value;
+    if (e.target.id === 'e-id') { var w = document.getElementById('e-id-warn'); if (w) w.innerHTML = shapeWarn(e.target.getAttribute('data-store'), e.target.value); }
     if (state.editId && /^e-/.test(e.target.id)) { state.editDirty = true; document.getElementById('e-save').disabled = state.busy; }
   });
   root.addEventListener('change', function (e) {
