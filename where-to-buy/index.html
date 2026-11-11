@@ -46,7 +46,7 @@
   .save { display: inline-block; font-size: 0.8rem; font-weight: 600; color: var(--ledger-green); background: var(--ledger-green-soft); border-radius: 999px; padding: 0.05rem 0.5rem; white-space: nowrap; }
   .alt { font-size: 0.88rem; margin-top: 0.15rem; }
   .tag { display: inline-block; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 0.1rem 0.4rem; border-radius: 3px; background: var(--ledger-green-soft); color: var(--ledger-green); vertical-align: 1px; }
-  .tag.ship { background: var(--status-draft-soft); color: #8a5a10; }
+  .tag.ship, .tag.todo { background: var(--status-draft-soft); color: #8a5a10; }
   .tag.bad { background: var(--status-error-soft); color: var(--status-error); }
   .tag.hand, .tag.usual { background: var(--paper); color: var(--ink-soft); border: 1px solid var(--rule); }
   .price { font-weight: 700; white-space: nowrap; }
@@ -111,6 +111,28 @@
   }
   function pack(l) { return l.units + ' × ' + num(l.unit_size) + ' ' + l.uom; }
   function dealBits(l) { return l.deal_text ? esc(l.deal_text) + (l.deal_ends ? ', ends ' + esc(central(l.deal_ends, false)) : '') : ''; }
+  // A store's coupon (BUG-084, PRD-007 Behavior 8). When it set the line's price the card says so, whether it is clipped and when
+  // it ends; the table keeps the store's own wording of the limits in full. A coupon that was not counted is listed in the table only.
+  function endsBit(c) { return c && c.ends ? ', ends ' + esc(central(c.ends, false)) : ''; }
+  function couponFlag(l) {
+    var c = l.coupon;
+    if (!c || !c.applied) return '';
+    if (c.clipped === true) return '<span class="tag">coupon</span> Coupon clipped' + endsBit(c);
+    if (c.clipped === false) return '<span class="tag todo">clip it</span> Clip the coupon in the store&rsquo;s app' + endsBit(c);
+    return '<span class="tag todo">coupon</span> Needs a coupon, check it is clipped' + endsBit(c);
+  }
+  var WHY = { deal: 'the line already has a deal', quantity: 'needs more than one', 'no saving': 'not lower than the shelf price' };
+  function couponRows(l) {
+    var c = l.coupon;
+    if (!c) return '';
+    var h = '<br>' + (c.applied ? 'Coupon: ' : 'Coupon not counted (' + esc(WHY[c.why] || 'not used') + '): ') + esc(c.text || 'coupon') +
+      (!c.applied && c.unit_price != null ? ', would be ' + money(c.unit_price) + ' each' : '') + endsBit(c) +
+      (c.applied ? (c.clipped === true ? ', clipped' : c.clipped === false ? ', not clipped' : '') : '');
+    if (c.limit) h += '<br><span class="sub">' + esc(c.limit) + '</span>';
+    if (c.terms) h += '<br><span class="sub">' + esc(c.terms) + '</span>';
+    return h;
+  }
+  function usedCoupon(l) { return !!(l.coupon && l.coupon.applied && l.shelf_pack_price != null); }
   function byName(a, b) { return a.localeCompare(b); }
   function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
 
@@ -147,8 +169,9 @@
     if (l.state === 'by_hand') return '<tr><td>' + st + '</td><td>—</td><td class="n"><span class="tag hand">by hand</span></td><td>Store switched off</td></tr>';
     if (l.state === 'not_in_run') return '<tr><td>' + st + '</td><td>—</td><td class="n">—</td><td>Not in the last run</td></tr>';
     if (l.state === 'unchecked') return '<tr><td>' + st + '</td><td>—</td><td class="n"><span class="tag bad">unchecked</span></td><td>' + esc(l.reason) + '</td></tr>';
-    return '<tr><td>' + st + '</td><td>' + esc(pack(l)) + '<br>' + money(l.pack_price) + '</td><td class="n">' + money(l.unit_price) + '</td><td>' +
-      esc(ways(l.availability)) + (l.deal_text ? '<br>' + dealBits(l) : '') + '</td></tr>';
+    return '<tr><td>' + st + '</td><td>' + esc(pack(l)) + '<br>' + money(l.pack_price) + (usedCoupon(l) ? '<br><span class="sub">shelf ' + money(l.shelf_pack_price) + '</span>' : '') +
+      '</td><td class="n">' + money(l.unit_price) + '</td><td>' +
+      esc(ways(l.availability)) + (l.deal_text ? '<br>' + dealBits(l) : '') + couponRows(l) + '</td></tr>';
   }
   function history(p) {
     var trend = Object.keys(p.trend || {}).filter(function (s) { return (p.trend[s] || []).length; }).map(function (s) {
@@ -170,11 +193,13 @@
       '<div class="best"><span class="price">' + money(l.unit_price) + ' each</span>' + (w === 'ships only' ? ' <span class="tag ship">ships</span>' : '') +
       (l.store === p.usual_store ? ' <span class="sub">· your usual store</span>' : '') +
       (s ? ' <span class="save">Save ' + money(s.each) + ' (' + s.pct + '%)</span>' : '') + '</div>';
-    var bits = [esc(pack(l)) + ' at ' + money(l.pack_price)];
+    var bits = [esc(pack(l)) + ' at ' + money(l.pack_price) + (usedCoupon(l) ? ' with coupon (was ' + money(l.shelf_pack_price) + ')' : '')];
     if (l.deal_text) bits.push(dealBits(l));
     if (w) bits.push(esc(w));
     if (!p.same) bits.push('before shipping fees and order minimums');
     h += '<div class="sub">' + bits.join(' · ') + '</div>';
+    var flag = couponFlag(l);
+    if (flag) h += '<div class="alt">' + flag + '</div>';
     if (!p.same) {
       var n = p.lowest_no_ship;
       h += '<div class="alt">' + (n ? 'Without shipping: <b>' + esc(n.store) + '</b> ' + money(n.unit_price) + ' each' + (n.store === p.usual_store ? ', your usual store' : '') : 'None available without shipping.') + '</div>';

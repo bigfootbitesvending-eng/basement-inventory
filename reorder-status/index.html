@@ -423,6 +423,9 @@
     if (l.store === p.usual_store) bits.push('your usual store');
     else if (s) bits.push('<span class="save">Save ' + money(s) + '</span> vs ' + escapeHtml(p.usual_store));
     if (l.deal_text) bits.push(escapeHtml(l.deal_text) + (l.deal_ends && shortDay(l.deal_ends) ? ', ends ' + escapeHtml(shortDay(l.deal_ends)) : ''));
+    // A coupon that set this price (BUG-084): say so, whether it is clipped, and when it ends. The full wording is on Where to Buy.
+    var cp = l.coupon;
+    if (cp && cp.applied) bits.push('with coupon' + (cp.clipped === false ? ', clip it' : cp.clipped === true ? ', clipped' : '') + (cp.ends && shortDay(cp.ends) ? ', ends ' + escapeHtml(shortDay(cp.ends)) : ''));
     bits.push('prices ' + escapeHtml(when));
     return head + bits.join(' · ') + '</div>';
   }
