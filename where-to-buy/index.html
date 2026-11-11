@@ -114,8 +114,14 @@
   // A store's coupon (BUG-084, PRD-007 Behavior 8). When it set the line's price the card says so, whether it is clipped and when
   // it ends; the table keeps the store's own wording of the limits in full. A coupon that was not counted is listed in the table only.
   function endsBit(c) { return c && c.ends ? ', ends ' + esc(central(c.ends, false)) : ''; }
+  // A reward is a credit paid after the purchase, once per order: shown as a note, never in the price.
+  function rewardBit(c) {
+    return money(c.amount) + ' back' + (c.max_quantity === 1 ? ' once per order' : '') + (c.quantity > 1 ? ' when you buy ' + c.quantity + ' or more' : '') +
+      (c.clipped === false ? ', add it at checkout' : c.clipped === true ? ', added' : '') + endsBit(c) + ', not in the price';
+  }
   function couponFlag(l) {
     var c = l.coupon;
+    if (c && c.kind === 'reward') return '<span class="tag">reward</span> ' + rewardBit(c);
     if (!c || !c.applied) return '';
     if (c.clipped === true) return '<span class="tag">coupon</span> Coupon clipped' + endsBit(c);
     if (c.clipped === false) return '<span class="tag todo">clip it</span> Clip the coupon in the store&rsquo;s app' + endsBit(c);
@@ -125,6 +131,7 @@
   function couponRows(l) {
     var c = l.coupon;
     if (!c) return '';
+    if (c.kind === 'reward') return '<br>Reward: ' + rewardBit(c);
     var h = '<br>' + (c.applied ? 'Coupon: ' : 'Coupon not counted (' + esc(WHY[c.why] || 'not used') + '): ') + esc(c.text || 'coupon') +
       (!c.applied && c.unit_price != null ? ', would be ' + money(c.unit_price) + ' each' : '') + endsBit(c) +
       (c.applied ? (c.clipped === true ? ', clipped' : c.clipped === false ? ', not clipped' : '') : '');
