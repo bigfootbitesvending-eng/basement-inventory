@@ -43,6 +43,7 @@
   .card { background: #fff; border: 1px solid var(--rule); border-radius: 6px; padding: 0.6rem 0.75rem 0; margin-bottom: 0.5rem; }
   .pname { font-weight: 700; font-size: 1rem; margin-bottom: 0.15rem; }
   .best { font-size: 0.95rem; line-height: 1.35; }
+  .buy { display: inline-block; font-size: 0.85rem; font-weight: 600; padding: 0.35rem 0.2rem; }
   .save { display: inline-block; font-size: 0.8rem; font-weight: 600; color: var(--ledger-green); background: var(--ledger-green-soft); border-radius: 999px; padding: 0.05rem 0.5rem; white-space: nowrap; }
   .alt { font-size: 0.88rem; margin-top: 0.15rem; }
   .tag { display: inline-block; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 0.1rem 0.4rem; border-radius: 3px; background: var(--ledger-green-soft); color: var(--ledger-green); vertical-align: 1px; }
@@ -140,6 +141,11 @@
     return h;
   }
   function usedCoupon(l) { return !!(l.coupon && l.coupon.applied && l.shelf_pack_price != null); }
+  // The product's own page at that store, opened in a new tab. https only; no address on the line, no link.
+  function openLink(l, text) {
+    var u = String((l && l.page_url) || '');
+    return /^https:\/\//i.test(u) ? '<a class="buy" href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">' + text + '</a>' : '';
+  }
   function byName(a, b) { return a.localeCompare(b); }
   function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
 
@@ -198,6 +204,7 @@
     var l = p.lowest, s = saving(p), w = ways(l.availability);
     var h = '<section class="card" data-upc="' + esc(p.upc) + '"><div class="pname">' + esc(p.name) + '</div>' +
       '<div class="best"><span class="price">' + money(l.unit_price) + ' each</span>' + (w === 'ships only' ? ' <span class="tag ship">ships</span>' : '') +
+      ' ' + openLink(l, 'Open at ' + l.store + ' &rarr;') +
       (l.store === p.usual_store ? ' <span class="sub">· your usual store</span>' : '') +
       (s ? ' <span class="save">Save ' + money(s.each) + ' (' + s.pct + '%)</span>' : '') + '</div>';
     var bits = [esc(pack(l)) + ' at ' + money(l.pack_price) + (usedCoupon(l) ? ' with coupon (was ' + money(l.shelf_pack_price) + ')' : '')];
@@ -209,7 +216,7 @@
     if (flag) h += '<div class="alt">' + flag + '</div>';
     if (!p.same) {
       var n = p.lowest_no_ship;
-      h += '<div class="alt">' + (n ? 'Without shipping: <b>' + esc(n.store) + '</b> ' + money(n.unit_price) + ' each' + (n.store === p.usual_store ? ', your usual store' : '') : 'None available without shipping.') + '</div>';
+      h += '<div class="alt">' + (n ? 'Without shipping: <b>' + esc(n.store) + '</b> ' + money(n.unit_price) + ' each' + (n.store === p.usual_store ? ', your usual store' : '') + ' ' + openLink(n, 'Open &rarr;') : 'None available without shipping.') + '</div>';
     }
     var u = usualLine(p);
     if (u) h += '<div class="sub">' + u + '</div>';

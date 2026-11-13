@@ -418,7 +418,12 @@
     }
     var a = l.availability || {};
     var shipsOnly = a.ship && !a.in_store && !a.pickup && !a.delivery;
-    var bits = ['<b>' + escapeHtml(l.store) + '</b> ' + money(l.unit_price) + ' each' + (shipsOnly ? ' (ships)' : '')];
+    // The store name opens the product's own page there in a new tab (https only; no address, plain name).
+    var pageUrl = String(l.page_url || '');
+    var storeHtml = /^https:\/\//i.test(pageUrl)
+      ? '<a href="' + escapeAttr(pageUrl) + '" target="_blank" rel="noopener noreferrer"><b>' + escapeHtml(l.store) + '</b> &rarr;</a>'
+      : '<b>' + escapeHtml(l.store) + '</b>';
+    var bits = [storeHtml + ' ' + money(l.unit_price) + ' each' + (shipsOnly ? ' (ships)' : '')];
     var s = saving(p);
     if (l.store === p.usual_store) bits.push('your usual store');
     else if (s) bits.push('<span class="save">Save ' + money(s) + '</span> vs ' + escapeHtml(p.usual_store));
