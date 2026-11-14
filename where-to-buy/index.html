@@ -111,6 +111,14 @@
     return w.join(', ') + (a.ship ? ', or ships' : '');
   }
   function pack(l) { return l.units + ' × ' + num(l.unit_size) + ' ' + l.uom; }
+  // A page that showed no price is priced from the row's regular price (PRD-007 Behavior 15): the one Randy entered, or the last one
+  // a page showed. The card says which and when. A page that never shows stock (Publix) says so.
+  function sourceBit(l) {
+    var s = l && l.price_source;
+    if (!s || !s.date) return '';
+    return esc(l.store) + ' regular price, ' + (s.kind === 'entered' ? 'entered ' : 'seen on its page ') + esc(day(s.date)) + ' (no price on the page this run)';
+  }
+  function stockBit(l) { return l && l.stock_shown === false ? 'stock not shown' : ''; }
   function dealBits(l) { return l.deal_text ? esc(l.deal_text) + (l.deal_ends ? ', ends ' + esc(central(l.deal_ends, false)) : '') : ''; }
   // A store's coupon (BUG-084, PRD-007 Behavior 8). When it set the line's price the card says so, whether it is clipped and when
   // it ends; the table keeps the store's own wording of the limits in full. A coupon that was not counted is listed in the table only.
@@ -123,22 +131,35 @@
   function couponFlag(l) {
     var c = l.coupon;
     if (c && c.kind === 'reward') return '<span class="tag">reward</span> ' + rewardBit(c);
+    if (c && c.kind === 'spend') return '<span class="tag">coupon</span> ' + spendBit(c);
     if (!c || !c.applied) return '';
+    if (c.kind === 'buy_n' && c.quantity > 1) return '<span class="tag todo">coupon</span> Needs a coupon, buy ' + c.quantity + ', check it is clipped' + endsBit(c);
     if (c.clipped === true) return '<span class="tag">coupon</span> Coupon clipped' + endsBit(c);
     if (c.clipped === false) return '<span class="tag todo">clip it</span> Clip the coupon in the store&rsquo;s app' + endsBit(c);
     return '<span class="tag todo">coupon</span> Needs a coupon, check it is clipped' + endsBit(c);
   }
-  var WHY = { deal: 'the line already has a deal', quantity: 'needs more than one', 'no saving': 'not lower than the shelf price' };
+  // A coupon off a basket total ("$5 off when you spend $15") depends on the rest of the cart: a note, never in the price.
+  function spendBit(c) {
+    return money(c.amount_off) + ' off' + (c.spend != null ? ' when you spend ' + money(c.spend) : '') + ' on qualifying items' + endsBit(c) + ', not in the price';
+  }
+  var WHY = { deal: 'the line already has a deal', quantity: 'needs more than one', 'no saving': 'not lower than the shelf price', spend: 'off a basket total' };
   function couponRows(l) {
     var c = l.coupon;
     if (!c) return '';
     if (c.kind === 'reward') return '<br>Reward: ' + rewardBit(c);
+    if (c.kind === 'spend') return '<br>Coupon not counted (' + esc(WHY.spend) + '): ' + esc(c.text || 'coupon') + ', ' + spendBit(c) + notesBits(c);
     var h = '<br>' + (c.applied ? 'Coupon: ' : 'Coupon not counted (' + esc(WHY[c.why] || 'not used') + '): ') + esc(c.text || 'coupon') +
+      (c.kind === 'buy_n' && c.quantity > 1 ? ', buy ' + c.quantity : '') +
       (!c.applied && c.unit_price != null ? ', would be ' + money(c.unit_price) + ' each' : '') + endsBit(c) +
       (c.applied ? (c.clipped === true ? ', clipped' : c.clipped === false ? ', not clipped' : '') : '');
+    h += notesBits(c);
+    if (c.others_unconfirmed) h += '<br><span class="sub">Other coupons on this page aren&rsquo;t counted: the page doesn&rsquo;t say whether they combine.</span>';
     if (c.limit) h += '<br><span class="sub">' + esc(c.limit) + '</span>';
     if (c.terms) h += '<br><span class="sub">' + esc(c.terms) + '</span>';
     return h;
+  }
+  function notesBits(c) {
+    return (Array.isArray(c.notes) ? c.notes : []).map(function (x) { return '<br>Also: ' + esc(x.text || 'coupon') + ', ' + spendBit(x); }).join('');
   }
   function usedCoupon(l) { return !!(l.coupon && l.coupon.applied && l.shelf_pack_price != null); }
   // The product's own page at that store, opened in a new tab. https only; no address on the line, no link.
@@ -184,7 +205,7 @@
     if (l.state === 'unchecked') return '<tr><td>' + st + '</td><td>—</td><td class="n"><span class="tag bad">unchecked</span></td><td>' + esc(l.reason) + '</td></tr>';
     return '<tr><td>' + st + '</td><td>' + esc(pack(l)) + '<br>' + money(l.pack_price) + (usedCoupon(l) ? '<br><span class="sub">shelf ' + money(l.shelf_pack_price) + '</span>' : '') +
       '</td><td class="n">' + money(l.unit_price) + '</td><td>' +
-      esc(ways(l.availability)) + (l.deal_text ? '<br>' + dealBits(l) : '') + couponRows(l) + '</td></tr>';
+      esc(ways(l.availability)) + (stockBit(l) ? ', ' + stockBit(l) : '') + (sourceBit(l) ? '<br>' + sourceBit(l) : '') + (l.deal_text ? '<br>' + dealBits(l) : '') + couponRows(l) + '</td></tr>';
   }
   function history(p) {
     var trend = Object.keys(p.trend || {}).filter(function (s) { return (p.trend[s] || []).length; }).map(function (s) {
@@ -208,8 +229,9 @@
       (l.store === p.usual_store ? ' <span class="sub">· your usual store</span>' : '') +
       (s ? ' <span class="save">Save ' + money(s.each) + ' (' + s.pct + '%)</span>' : '') + '</div>';
     var bits = [esc(pack(l)) + ' at ' + money(l.pack_price) + (usedCoupon(l) ? ' with coupon (was ' + money(l.shelf_pack_price) + ')' : '')];
+    if (sourceBit(l)) bits.push(sourceBit(l));
     if (l.deal_text) bits.push(dealBits(l));
-    if (w) bits.push(esc(w));
+    if (w) bits.push(esc(w) + (stockBit(l) ? ', ' + stockBit(l) : ''));
     if (!p.same) bits.push('before shipping fees and order minimums');
     h += '<div class="sub">' + bits.join(' · ') + '</div>';
     var flag = couponFlag(l);
