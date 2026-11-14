@@ -144,9 +144,11 @@
   }
   // Kroger's item id is the UPC without its check digit, padded to 13 digits.
   function krogerId(upc) { return ('0000000000000' + String(upc).slice(0, -1)).slice(-13); }
-  // Paste a link or type an id: either way, read the id and build the link. Kroger needs its full link (its address needs the name).
+  // Paste a link or type an id: either way, read the id and build the link. Kroger and Publix need their full link (the address
+  // needs the name).
   var ITEM = {
-    Kroger: { label: 'Kroger page link', ph: 'Paste the Kroger product page link', re: /kroger\.com\/p\/[^/?#]+\/(\d{13})/ },
+    Kroger: { label: 'Kroger page link', ph: 'Paste the Kroger product page link', re: /kroger\.com\/p\/[^/?#]+\/(\d{13})/, paste: true },
+    Publix: { label: 'Publix page link', ph: 'Paste the Publix product page link', re: /publix\.com\/pd\/[^/?#]+\/(RIO-[A-Z]+-\d+)/i, paste: true },
     Walmart: { label: 'Walmart item number', ph: 'e.g. 10535170, or paste the link', re: /walmart\.com\/ip\/(?:[^/?#]+\/)?(\d{5,})/, build: 'https://www.walmart.com/ip/', shape: /^\d{5,}$/, noun: 'item numbers', words: 'digits only, 5 or more' },
     "Sam's": { label: "Sam's item number", ph: 'e.g. 15098707355, or paste the link', re: /samsclub\.com\/(?:ip|p)\/(?:[^/?#]+\/)?(?:prod)?(\d{5,})/, build: 'https://www.samsclub.com/ip/', shape: /^\d{5,}$/, noun: 'item numbers', words: 'digits only, 5 or more' },
     Amazon: { label: 'Amazon ASIN', ph: 'e.g. B000T9WM62, or paste the link', re: /amazon\.com\/(?:[^/?#]+\/)?(?:dp|gp\/product)\/([A-Z0-9]{10})/, build: 'https://www.amazon.com/dp/', tail: '/', shape: /^[A-Za-z0-9]{10}$/, noun: 'ASINs', words: '10 letters and digits' }
@@ -162,7 +164,7 @@
     var spec = ITEM[store];
     if (!spec) return { id: null, link: null };
     var m = spec.re.exec(raw);
-    if (store === 'Kroger') return { id: m ? m[1] : null, link: m ? raw.split(/[?#]/)[0] : null };
+    if (spec.paste) return { id: m ? m[1].toUpperCase() : null, link: m ? raw.split(/[?#]/)[0] : null };
     var id = m ? m[1] : (/^https?:/i.test(raw) || /\s/.test(raw) ? null : raw);
     return id ? { id: id, link: spec.build + id + (spec.tail || '') } : { id: null, link: null };
   }
@@ -177,7 +179,7 @@
   // What the add form starts with for a product: size and units from its other rows, else size from its name.
   function startAdd(pick, keep) {
     var rows = rowsFor(pick.upc), last = rows[rows.length - 1], left = storesLeft(pick.upc);
-    var a = { store: left[0] || null, item: '', units: 0, size: '', uom: '', from: '' };
+    var a = { store: left[0] || null, item: '', units: 0, size: '', uom: '', from: '', price: '' };
     if (keep) { a.units = keep.units; a.size = keep.size; a.uom = keep.uom; a.from = 'Same as the ' + rows.map(function (r) { return r.store; }).join(' and ') + ' row' + (rows.length > 1 ? 's.' : '.'); }
     else if (last) { a.units = last.units_per_pack; a.size = num(last.unit_size); a.uom = normUom(last.unit_size_uom); a.from = 'Same as the ' + rows.map(function (r) { return r.store; }).join(' and ') + ' row' + (rows.length > 1 ? 's.' : '.'); }
     else {
@@ -188,6 +190,20 @@
     return a;
   }
   function host(url) { try { return new URL(url).hostname; } catch (e) { return url; } }
+  // Regular price (PRD-007 Behavior 15; Randy, 2026-11-14: the same at every store). The page's own price always wins; this one is
+  // used only when a page shows no price, as Publix pages do off a sale. Typed as "2.49" or "$2.49"; empty means none.
+  function money(n) { return '$' + Number(n).toFixed(2); }
+  function shortDate(s) { var d = new Date(s); return isNaN(d) ? '' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
+  function hasPrice(r) { return r.regular_price !== null && r.regular_price !== undefined && r.regular_price !== ''; }
+  function priceText(v) { v = String(v == null ? '' : v).trim().replace(/^\$/, ''); var x = Number(v); return v === '' ? '' : (isFinite(x) ? x.toFixed(2) : v); }
+  function priceLine(r) {
+    return hasPrice(r) ? 'Regular price ' + money(r.regular_price) + (shortDate(r.regular_price_at) ? ', entered ' + shortDate(r.regular_price_at) : '') + '. Used only when the page shows no price.'
+      : 'No regular price entered. Edit to add one; it\'s used only when the page shows no price.';
+  }
+  function priceField(prefix, value) {
+    return '<div class="field"><label for="' + prefix + 'price">Regular price (optional)</label><input id="' + prefix + 'price" inputmode="decimal" autocomplete="off" placeholder="e.g. 2.49" value="' + esc(value) + '">' +
+      '<div class="hint">What one pack costs on the shelf, from the store or Instacart. The price check uses it only when the page shows no price, as Publix pages do off a sale. Leave it empty for none.</div></div>';
+  }
   // By catalog category, a missing one as Other after every named category, then by name (E-73; /shared/groups.js,
   // the same order as Where to Buy).
   function byCategory(groups) {
@@ -226,24 +242,40 @@
   }
 
   // One write at a time; the button that started it is disabled until the answer comes back (no double taps).
+  // body is one call, or a list of steps run in order: each step is a call, or a function of the step before's answer that returns
+  // a call (or null to skip it). The messages read the first call's answer. If a later step is refused, the earlier ones stand, so
+  // the list is reloaded before the error shows.
   function write(body, okText, after, undo) {
     if (state.busy) return;
     state.undo = null;
     state.busy = true;
     BBMessages.show('working', 'Saving…');
     render();
-    post(body).then(function (changed) {
+    var steps = Array.isArray(body) ? body : [body], first = null, done = 0;
+    var chain = Promise.resolve(null);
+    steps.forEach(function (st) {
+      chain = chain.then(function (prev) {
+        var b = typeof st === 'function' ? st(prev) : st;
+        if (!b) return prev;
+        return post(b).then(function (changed) { if (!done++) first = changed; return changed; });
+      });
+    });
+    chain.then(function () {
       return load().then(function () {
         state.busy = false;
-        if (after) after(changed);
+        if (after) after(first);
         state.undo = undo || null;
         render();
-        BBMessages.show('success', okText(changed), state.undo ? { action: 'Undo', onHide: function () { state.undo = null; } } : {});
+        BBMessages.show('success', okText(first), state.undo ? { action: 'Undo', onHide: function () { state.undo = null; } } : {});
       });
     }).catch(function (err) {
-      state.busy = false;
-      render();
-      BBMessages.show('error', /^Nothing changed/.test(err.message) ? err.message : 'Nothing changed. ' + err.message, { why: err.why || (err.message === 'Failed to fetch' ? 'Failed to fetch' : null) });
+      var show = function () {
+        state.busy = false;
+        render();
+        BBMessages.show('error', /^Nothing changed/.test(err.message) ? (done ? err.message.replace(/^Nothing changed\./, 'The regular price wasn\'t saved.') : err.message) : 'Nothing changed. ' + err.message,
+          { why: err.why || (err.message === 'Failed to fetch' ? 'Failed to fetch' : null) });
+      };
+      if (done) { load().then(function () { state.editId = null; show(); }, show); } else show();
     });
   }
   document.addEventListener('click', function (e) {
@@ -322,6 +354,7 @@
     return '<div class="lrow"><div class="nm">' + esc(r.store) + (storeOff(r.store) ? '<span class="tag">store off</span>' : '') + '</div>' +
       '<div class="meta"><a href="' + esc(r.page_url) + '" target="_blank" rel="noopener">' + esc(host(r.page_url)) + '</a> · item id ' + esc(r.store_item_id) +
       '<br>Pack: ' + esc(r.units_per_pack) + ' × ' + esc(num(r.unit_size)) + ' ' + esc(normUom(r.unit_size_uom)) + '. A page showing a different pack is skipped.' +
+      '<br><span class="pline">' + esc(priceLine(r)) + '</span>' +
       (r.retired ? '<br>Retired in the catalog, so the price check skips it.' : '') + '</div>' +
       '<div class="actions"><button class="btn" type="button" data-act="edit" data-id="' + r.id + '"' + (state.busy ? ' disabled' : '') + '>Edit</button>' +
       '<button class="btn danger" type="button" data-act="off" data-id="' + r.id + '"' + (state.busy ? ' disabled' : '') + '>Turn off</button></div></div>';
@@ -337,6 +370,7 @@
       '<div class="field"><label for="e-url">Product page</label><input id="e-url" value="' + esc(r.page_url) + '"></div>' +
       '<div class="field"><label for="e-id">Store item id</label><input id="e-id" data-store="' + esc(r.store) + '" value="' + esc(r.store_item_id) + '"><div id="e-id-warn">' + shapeWarn(r.store, r.store_item_id) + '</div></div>' + packFields('e-', r) +
       '<div class="hint">A new page link or item id keeps this row. A new units per pack or unit size starts a new row, and this one keeps its price history.</div>' +
+      priceField('e-', hasPrice(r) ? Number(r.regular_price).toFixed(2) : '') +
       '<div class="actions"><button class="btn" type="button" data-act="edit-cancel">Cancel</button>' +
       '<button class="btn primary" type="button" id="e-save" data-act="edit-save" data-id="' + r.id + '"' + (state.editDirty && !state.busy ? '' : ' disabled') + '>Save</button></div></div>';
   }
@@ -368,7 +402,10 @@
     }).join('') + '</div>' + (storeOff(a.store) ? '<div class="hint">' + esc(a.store) + ' is switched off, so this row waits until it\'s on.</div>' : '') + '</div>';
     var it = readItem(a.store, a.item), spec = ITEM[a.store] || { label: 'Store item id', ph: '' };
     h += '<div class="field"><label for="a-item">' + esc(spec.label) + '</label><input id="a-item" autocomplete="off" placeholder="' + esc(spec.ph) + '" value="' + esc(a.item) + '">';
-    if (a.store === 'Kroger') {
+    if (a.store === 'Publix') {
+      h += '<div class="hint">Publix needs its full link: open the product on publix.com and copy the address.</div>' +
+        (a.item ? (!it.id ? '<div class="built bad">That isn\'t a Publix product link.</div>' : '<div class="built ok">Item id ' + esc(it.id) + '.</div>') : '');
+    } else if (a.store === 'Kroger') {
       var want = krogerId(state.pick.upc);
       // A different id isn't refused: a store can sell another package of the same product under its own UPC
       // (Mountain Dew 6 pk is 012000504082, an alias of the catalog's 012000344985). The worker still checks the page's
@@ -385,7 +422,8 @@
     h += '<div class="grid2"><div class="field"><label for="a-units">Units per pack</label><select id="a-units">' + packOptions(a.units) + '</select></div>' +
       '<div class="field"><label for="a-size">Unit size</label><div class="grid2"><input id="a-size" inputmode="decimal" value="' + esc(a.size) + '">' +
       '<select id="a-uom">' + uomOptions(a.uom) + '</select></div></div></div>' +
-      '<div class="hint">' + esc(a.from) + (a.store === "Sam's" ? ' Sam\'s sells cases: set the units per pack to the case count.' : '') + ' ' + BOX_HINT + '</div>';
+      '<div class="hint">' + esc(a.from) + (a.store === "Sam's" ? ' Sam\'s sells cases: set the units per pack to the case count.' : '') + ' ' + BOX_HINT + '</div>' +
+      priceField('a-', a.price);
     var next = left.filter(function (x) { return x !== a.store; })[0];
     h += '<div class="actions"><button class="btn" type="button" data-act="add-cancel">Cancel</button>' +
       '<button class="btn" type="button" data-act="add-save"' + (state.busy ? ' disabled' : '') + '>Save</button>' +
@@ -423,6 +461,7 @@
       var it = document.getElementById('a-item'); if (it) { it.focus(); it.setSelectionRange(p2, p2); }
     }
     if (e.target.id === 'a-size' && state.add) state.add.size = e.target.value;
+    if (e.target.id === 'a-price' && state.add) state.add.price = e.target.value;
     if (e.target.id === 'e-id') { var w = document.getElementById('e-id-warn'); if (w) w.innerHTML = shapeWarn(e.target.getAttribute('data-store'), e.target.value); }
     if (state.editId && /^e-/.test(e.target.id)) { state.editDirty = true; document.getElementById('e-save').disabled = state.busy; }
   });
@@ -461,13 +500,15 @@
       state.add.store = b.getAttribute('data-store'); state.add.item = ''; render();
     } else if (act === 'add-save' || act === 'add-next') {
       var a = state.add, it = readItem(a.store, a.item), pick = state.pick, goNext = act === 'add-next';
-      if (!it.id || !it.link) { BBMessages.show('error', 'Nothing changed. ' + (a.store === 'Kroger' ? 'Paste the Kroger product page link.' : 'Type the ' + ITEM[a.store].label.toLowerCase() + ', or paste the link.')); return; }
+      if (!it.id || !it.link) { BBMessages.show('error', 'Nothing changed. ' + ((ITEM[a.store] || {}).paste ? 'Paste the ' + a.store + ' product page link.' : 'Type the ' + ITEM[a.store].label.toLowerCase() + ', or paste the link.')); return; }
       var body = { operation: 'create', upc: pick.upc, store: a.store, page_url: it.link, store_item_id: it.id, units_per_pack: Number(a.units), unit_size: Number(a.size), unit_size_uom: a.uom };
-      var label = pick.name + ' at ' + a.store, keep = { units: a.units, size: a.size, uom: a.uom };
-      write(body, function (changed) {
+      var label = pick.name + ' at ' + a.store, keep = { units: a.units, size: a.size, uom: a.uom }, price = priceText(a.price);
+      var steps = [body];
+      if (price) steps.push(function (prev) { var id = prev && prev[0] && prev[0].id; return id ? { operation: 'set_price', list_id: id, regular_price: price } : null; });
+      write(steps, function (changed) {
         var back = changed && changed[0] && changed[0].result === 'turned_on';
         var next = goNext && state.add && state.add.store ? ' Next: ' + state.add.store + '.' : '';
-        return (back ? label + ' is back on the list, with its price history.' : label + ' added.') + next;
+        return (back ? label + ' is back on the list, with its price history.' : label + ' added.') + (price ? ' Regular price ' + money(price) + '.' : '') + next;
       }, function () {
         state.open[pick.upc] = true;
         if (goNext) state.add = startAdd(pick, keep);
@@ -480,10 +521,23 @@
     } else if (act === 'edit-save') {
       var r = rowById(b.getAttribute('data-id'));
       var eb = Object.assign({ operation: 'update', list_id: r.id, page_url: val('e-url'), store_item_id: val('e-id') }, packFrom('e-'));
-      write(eb, function (changed) {
+      var was = hasPrice(r) ? Number(r.regular_price).toFixed(2) : '', now = priceText(val('e-price'));
+      var rowChanged = eb.page_url !== r.page_url || eb.store_item_id !== r.store_item_id || eb.units_per_pack !== Number(r.units_per_pack) ||
+        eb.unit_size !== Number(r.unit_size) || normUom(eb.unit_size_uom) !== normUom(r.unit_size_uom);
+      var priceChanged = now !== was, who = r.product_name + ' at ' + r.store;
+      var priceSaid = now ? 'regular price ' + (isFinite(Number(now)) ? money(now) : now) : 'regular price cleared';
+      if (!rowChanged && !priceChanged) { state.editId = null; render(); return; }
+      var esteps = [];
+      if (rowChanged) esteps.push(eb);
+      // The price goes on the row the edit leaves: the same row, or the new one a new pack starts.
+      if (priceChanged) esteps.push(function (prev) { var id = (prev && prev[0] && prev[0].id) || r.id; return { operation: 'set_price', list_id: id, regular_price: now }; });
+      write(esteps, function (changed) {
+        if (!rowChanged) return who + ': ' + priceSaid + '.';
         var res = changed && changed[0] && changed[0].result;
-        return r.product_name + ' at ' + r.store + (res === 'updated' ? ' saved.' : ': new pack saved as a new row; the old one keeps its history.');
-      }, function () { state.editId = null; });
+        return who + (res === 'updated' ? ' saved.' : ': new pack saved as a new row; the old one keeps its history.') + (priceChanged ? ' The ' + priceSaid + '.' : '');
+      }, function () { state.editId = null; },
+        // A price change alone can be undone from the banner, like the usual store.
+        !rowChanged ? { body: { operation: 'set_price', list_id: r.id, regular_price: was }, text: who + ': ' + (was ? 'regular price ' + money(was) : 'regular price cleared') + ' again.' } : null);
     } else if (act === 'off') {
       var x = rowById(b.getAttribute('data-id'));
       write({ operation: 'turn_off', list_id: x.id }, function () { return x.product_name + ' at ' + x.store + ' turned off. Its price history is kept.'; }, null,
