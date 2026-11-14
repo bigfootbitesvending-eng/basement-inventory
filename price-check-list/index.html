@@ -58,6 +58,10 @@
   .built.ok { color: var(--ledger-green); font-weight: 600; }
   .built.bad { color: var(--status-error); font-weight: 600; }
   .built.warn { color: #8a5a10; font-weight: 600; }
+  .built.warn .btn { margin-top: 0.35rem; }
+  .warnword { color: #8a5a10; font-weight: 600; }
+  .onlist { font-weight: 700; }
+  .actions.pact { margin: 0.4rem 0 0.2rem; }
   .btn.next { flex: 1 1 100%; font-family: var(--font-display); font-size: 1rem; border-radius: 6px; }
   .done { padding: 0.75rem; background: var(--ledger-green-soft); border-radius: 6px; margin-top: 0.75rem; }
   /* The Stores panel folds to one summary; an off store shows in its summary in red, with words (E-71). */
@@ -112,7 +116,7 @@
   // Stores the price check reads, by name: the add form's chips in this order, and the first one not yet on the list is offered first.
   function addOrder() { return state.stores.filter(function (x) { return x.swept; }).map(function (x) { return x.store; }).sort(function (a, b) { return a.localeCompare(b); }); }
 
-  var state = { stores: [], rows: [], products: null, adding: false, editId: null, busy: false, undo: null, pick: null, filter: '', add: null, open: {}, find: '', storesOpen: false };
+  var state = { stores: [], rows: [], products: null, adding: false, updating: false, busy: false, undo: null, pick: null, filter: '', add: null, open: {}, find: '', storesOpen: false };
   var root = document.getElementById('content');
 
   function esc(s) {
@@ -159,6 +163,16 @@
     if (!spec || !spec.shape || !id || spec.shape.test(String(id).trim())) return '';
     return '<div class="built warn">' + esc(store) + ' ' + spec.noun + ' are ' + spec.words + '. This one isn\'t, so check it\'s the right id. You can still save it; if the page doesn\'t match, the price check will say so.</div>';
   }
+  function linkId(store, url) {
+    var spec = ITEM[store];
+    if (!spec || !spec.paste) return null;
+    var m = spec.re.exec(String(url || ''));
+    return m ? (store === 'Publix' ? m[1].toUpperCase() : m[1]) : null;
+  }
+  function linkMismatch(store, url, id) {
+    var want = linkId(store, url);
+    return want && String(id || '').trim().toUpperCase() !== want.toUpperCase() ? want : null;
+  }
   function readItem(store, raw) {
     raw = String(raw || '').trim();
     var spec = ITEM[store];
@@ -172,16 +186,20 @@
   // the first. A box the machine sells as one goes in as ct, where the size is never compared (BUG-083).
   var BOX_HINT = 'A box the machine sells as one, like a 2-pizza box, is 1 × 2 ct.';
   function rowsFor(upc) { return state.rows.filter(function (r) { return r.upc === upc; }); }
-  function storesLeft(upc) {
-    var have = rowsFor(upc).map(function (r) { return r.store; });
-    return addOrder().filter(function (x) { return have.indexOf(x) < 0; });
-  }
-  // What the add form starts with for a product: size and units from its other rows, else size from its name.
-  function startAdd(pick, keep) {
-    var rows = rowsFor(pick.upc), last = rows[rows.length - 1], left = storesLeft(pick.upc);
-    var a = { store: left[0] || null, item: '', units: 0, size: '', uom: '', from: '', price: '' };
-    if (keep) { a.units = keep.units; a.size = keep.size; a.uom = keep.uom; a.from = 'Same as the ' + rows.map(function (r) { return r.store; }).join(' and ') + ' row' + (rows.length > 1 ? 's.' : '.'); }
-    else if (last) { a.units = last.units_per_pack; a.size = num(last.unit_size); a.uom = normUom(last.unit_size_uom); a.from = 'Same as the ' + rows.map(function (r) { return r.store; }).join(' and ') + ' row' + (rows.length > 1 ? 's.' : '.'); }
+  // What the dialog shows for a product at a store (Randy, 2026-11-14: Update uses the Add dialog). A store the product is on the list
+  // at loads that row to change. Any other store starts a new row, with size and units from what was just saved (keep), else from the
+  // product's other rows, else from its name.
+  function loadStore(pick, store, keep) {
+    var rows = rowsFor(pick.upc), r = rows.filter(function (x) { return x.store === store; })[0];
+    if (r) {
+      return { store: store, rowId: r.id, orig: r, item: (ITEM[store] || {}).paste ? r.page_url : r.store_item_id, units: Number(r.units_per_pack), size: num(r.unit_size),
+        uom: normUom(r.unit_size_uom), price: hasPrice(r) ? Number(r.regular_price).toFixed(2) : '',
+        from: 'On the list at ' + store + '. Change what you need, then Save. A new units per pack or unit size starts a new row, and this one keeps its price history.' };
+    }
+    var last = rows[rows.length - 1], said = rows.length ? 'Same as the ' + rows.map(function (x) { return x.store; }).join(' and ') + ' row' + (rows.length > 1 ? 's.' : '.') : '';
+    var a = { store: store, rowId: null, orig: null, item: '', units: 0, size: '', uom: '', from: '', price: '' };
+    if (keep) { a.units = keep.units; a.size = keep.size; a.uom = keep.uom; a.from = said || 'Same as the row just saved.'; }
+    else if (last) { a.units = last.units_per_pack; a.size = num(last.unit_size); a.uom = normUom(last.unit_size_uom); a.from = said; }
     else {
       var z = sizeFromName(pick.name);
       if (z) { a.size = z.size; a.uom = z.uom; a.from = 'From the product name. Check it.' + (z.uom === 'ct' ? ' Counted items use ct: a 4-pack of toothbrushes is 4 × 1 ct.' : ''); }
@@ -189,6 +207,14 @@
     }
     return a;
   }
+  function listedAt(upc, store) { return rowsFor(upc).some(function (r) { return r.store === store; }); }
+  // Adding starts at the first store, by name, the product isn't listed at; updating starts at the first store it is listed at.
+  function firstStore(pick, updating) {
+    var order = addOrder(), pickFrom = order.filter(function (x) { return listedAt(pick.upc, x) === !!updating; });
+    return pickFrom[0] || order[0] || null;
+  }
+  // The green button goes to the next store over, by name (Randy, 2026-11-14: "If I'm at Kroger, I want the next store over").
+  function nextStore(store) { var order = addOrder(), i = order.indexOf(store); return i >= 0 ? order[i + 1] || null : null; }
   function host(url) { try { return new URL(url).hostname; } catch (e) { return url; } }
   // Regular price (PRD-007 Behavior 15; Randy, 2026-11-14: the same at every store). The page's own price always wins; this one is
   // used only when a page shows no price, as Publix pages do off a sale. Typed as "2.49" or "$2.49"; empty means none.
@@ -275,7 +301,8 @@
         BBMessages.show('error', /^Nothing changed/.test(err.message) ? (done ? err.message.replace(/^Nothing changed\./, 'The regular price wasn\'t saved.') : err.message) : 'Nothing changed. ' + err.message,
           { why: err.why || (err.message === 'Failed to fetch' ? 'Failed to fetch' : null) });
       };
-      if (done) { load().then(function () { state.editId = null; show(); }, show); } else show();
+      // An earlier step went through: reload, and point the dialog at the row as it now is, keeping the price that was typed.
+      if (done) { load().then(function () { if (state.add && state.pick) { var tp = state.add.price; state.add = loadStore(state.pick, state.add.store); state.add.price = tp; } show(); }, show); } else show();
     });
   }
   document.addEventListener('click', function (e) {
@@ -312,17 +339,17 @@
       h += '<div class="empty">Nothing on the list yet, so the price check has nothing to read. Add a page to start.</div>';
     }
     // One group per product: its name and usual store stay in view; its store rows fold away like Where to Buy's
-    // "All stores, history". A group stays open across redraws once opened, and opens for a row being edited.
+    // "All stores, history". A group stays open across redraws once opened.
     var groups = [];
     state.rows.forEach(function (r) {
       if (!groups.length || groups[groups.length - 1].upc !== r.upc) groups.push({ upc: r.upc, rows: [] });
       groups[groups.length - 1].rows.push(r);
     });
-    // Find, then one row per product under its catalog category, by name (E-72, E-73). A row being edited always shows.
+    // Find, then one row per product under its catalog category, by name (E-72, E-73).
     if (groups.length) {
       var f = state.find.trim().toLowerCase();
       var shown = groups.filter(function (g) {
-        return !f || g.rows[0].product_name.toLowerCase().indexOf(f) >= 0 || g.rows.some(function (r) { return r.id === state.editId; });
+        return !f || g.rows[0].product_name.toLowerCase().indexOf(f) >= 0;
       });
       h += '<div class="findrow"><input id="find" type="search" autocomplete="off" placeholder="Find a product on the list" aria-label="Find a product on the list" value="' + esc(state.find) + '"></div>';
       h += '<div class="count">' + (f ? shown.length + ' of ' : '') + groups.length + (groups.length === 1 ? ' product' : ' products') + ', by category, then name</div>';
@@ -331,23 +358,23 @@
         h += '<h2 class="catname">' + esc(c.cat) + ' <span class="scount">(' + c.groups.length + ')</span></h2><div class="plist">';
         c.groups.forEach(function (g) {
           var r0 = g.rows[0];
-          var open = state.open[g.upc] || g.rows.some(function (r) { return r.id === state.editId; });
+          var open = !!state.open[g.upc];
           var offHere = g.rows.filter(function (r) { return storeOff(r.store); }).map(function (r) { return r.store; });
           h += '<details class="prow" data-upc="' + esc(g.upc) + '"' + (open ? ' open' : '') + '><summary><div class="pn">' + esc(r0.product_name) + (r0.retired ? '<span class="tag bad">Retired</span>' : '') + '</div>' +
                '<div class="line">Usual: ' + esc(r0.usual_store) + ' · Checks ' + g.rows.length + ': ' + esc(g.rows.map(function (r) { return r.store; }).join(', ')) +
                (offHere.length ? ' · <span class="offword">' + esc(offHere.join(', ')) + ' off</span>' : '') + '</div></summary><div class="inner">' +
                '<label class="usualset">Usual store <select data-act="usual" data-upc="' + esc(r0.upc) + '" data-name="' + esc(r0.product_name) + '"' + (state.busy ? ' disabled' : '') + '>' + storeOptions(r0.usual_store) + '</select></label>' +
-               g.rows.map(function (r) { return state.editId === r.id ? editForm(r) : rowHtml(r); }).join('') + '</div></details>';
+               // Update opens the Add dialog on this product; Delete turns off all its store rows after a confirm (Randy, 2026-11-14).
+               '<div class="actions pact"><button class="btn" type="button" data-act="p-update" data-upc="' + esc(g.upc) + '"' + (state.busy ? ' disabled' : '') + '>Update</button>' +
+               '<button class="btn danger" type="button" data-act="p-delete" data-upc="' + esc(g.upc) + '"' + (state.busy ? ' disabled' : '') + '>Delete</button></div>' +
+               g.rows.map(rowHtml).join('') + '</div></details>';
         });
         h += '</div>';
       });
     }
-    // A redraw must never lose what was typed (a refused save keeps the form as it was).
-    var keep = {};
-    root.querySelectorAll('input[id], select[id]').forEach(function (el) { if (/^e-/.test(el.id)) keep[el.id] = el.value; });
+    // What is typed in the dialog lives in state.add, so a redraw (a refused save) keeps it.
     root.className = '';
     root.innerHTML = h;
-    Object.keys(keep).forEach(function (id) { var el = document.getElementById(id); if (el) el.value = keep[id]; });
   }
   function storeOff(name) { var s = state.stores.filter(function (x) { return x.store === name; })[0]; return s && !s.switched_on; }
   function rowHtml(r) {
@@ -355,27 +382,11 @@
       '<div class="meta"><a href="' + esc(r.page_url) + '" target="_blank" rel="noopener">' + esc(host(r.page_url)) + '</a> · item id ' + esc(r.store_item_id) +
       '<br>Pack: ' + esc(r.units_per_pack) + ' × ' + esc(num(r.unit_size)) + ' ' + esc(normUom(r.unit_size_uom)) + '. A page showing a different pack is skipped.' +
       '<br><span class="pline">' + esc(priceLine(r)) + '</span>' +
-      (r.retired ? '<br>Retired in the catalog, so the price check skips it.' : '') + '</div>' +
-      '<div class="actions"><button class="btn" type="button" data-act="edit" data-id="' + r.id + '"' + (state.busy ? ' disabled' : '') + '>Edit</button>' +
-      '<button class="btn danger" type="button" data-act="off" data-id="' + r.id + '"' + (state.busy ? ' disabled' : '') + '>Turn off</button></div></div>';
-  }
-  function packFields(prefix, r) {
-    return '<div class="grid2"><div class="field"><label for="' + prefix + 'units">Units per pack</label><select id="' + prefix + 'units">' + packOptions(r ? r.units_per_pack : 0) + '</select></div>' +
-      '<div class="field"><label for="' + prefix + 'size">Unit size</label><div class="grid2"><input id="' + prefix + 'size" inputmode="decimal" value="' + esc(r ? num(r.unit_size) : '') + '">' +
-      '<select id="' + prefix + 'uom">' + uomOptions(r ? r.unit_size_uom : '') + '</select></div></div></div>' +
-      '<div class="hint">How many things you sell in what you buy. A 6-pack of bottles is 6. A Sam\'s case of 48 bars is 48. ' + BOX_HINT + ' The price check skips a page whose count or size differs.</div>';
-  }
-  function editForm(r) {
-    return '<div class="lrow"><div class="nm">' + esc(r.store) + '</div>' +
-      '<div class="field"><label for="e-url">Product page</label><input id="e-url" value="' + esc(r.page_url) + '"></div>' +
-      '<div class="field"><label for="e-id">Store item id</label><input id="e-id" data-store="' + esc(r.store) + '" value="' + esc(r.store_item_id) + '"><div id="e-id-warn">' + shapeWarn(r.store, r.store_item_id) + '</div></div>' + packFields('e-', r) +
-      '<div class="hint">A new page link or item id keeps this row. A new units per pack or unit size starts a new row, and this one keeps its price history.</div>' +
-      priceField('e-', hasPrice(r) ? Number(r.regular_price).toFixed(2) : '') +
-      '<div class="actions"><button class="btn" type="button" data-act="edit-cancel">Cancel</button>' +
-      '<button class="btn primary" type="button" id="e-save" data-act="edit-save" data-id="' + r.id + '"' + (state.editDirty && !state.busy ? '' : ' disabled') + '>Save</button></div></div>';
+      (r.retired ? '<br>Retired in the catalog, so the price check skips it.' : '') +
+      (linkMismatch(r.store, r.page_url, r.store_item_id) ? '<br><span class="warnword">Item id doesn&rsquo;t match its link, so the price check skips it. Tap Update to fix.</span>' : '') + '</div></div>';
   }
   function addForm() {
-    var h = '<section class="panel"><h2>Add a page</h2>';
+    var h = '<section class="panel"><h2>' + (state.updating ? 'Update a product' : 'Add a page') + '</h2>';
     if (!state.pick) {
       var picks = '';
       if (state.products && state.filter.length >= 2) {
@@ -388,18 +399,16 @@
       return h + '<div class="field"><label for="a-prod">Product</label><input id="a-prod" autocomplete="off" placeholder="' + (state.products ? 'Type 2 or more letters of the name, or the UPC' : 'Loading products…') + '" value="' + esc(state.filter) + '">' + picks +
         '<div class="hint">From the basement catalog.</div></div><div class="actions"><button class="btn" type="button" data-act="add-cancel">Cancel</button></div></section>';
     }
-    var a = state.add, rows = rowsFor(state.pick.upc), left = storesLeft(state.pick.upc);
+    var a = state.add, rows = rowsFor(state.pick.upc);
     h += '<div class="picked">' + esc(state.pick.name) + ' <button class="btn" type="button" data-act="unpick">Change</button></div>';
     h += '<div class="sub">' + (rows.length ? 'On the list at ' + rows.map(function (r) { return esc(r.store) + ' (' + esc(r.units_per_pack) + ' × ' + esc(num(r.unit_size)) + ' ' + esc(normUom(r.unit_size_uom)) + ')'; }).join(', ') + '.' : 'Not on the list yet.') + '</div>';
-    if (!a.store) {
-      return h + '<div class="done">On the list at every store the price check reads.</div><div class="actions"><button class="btn" type="button" data-act="add-cancel">Done</button>' +
-        '<button class="btn" type="button" data-act="unpick">Add another product</button></div></section>';
-    }
+    if (!a || !a.store) return h + '<div class="done">No store is read by the price check yet.</div><div class="actions"><button class="btn" type="button" data-act="add-cancel">Done</button></div></section>';
     var order = addOrder();
     h += '<div class="field"><label>Store</label><div class="chips">' + order.map(function (x) {
-      var on = left.indexOf(x) < 0;
-      return '<button class="chip" type="button" data-act="add-store" data-store="' + esc(x) + '" aria-pressed="' + (x === a.store) + '"' + (on ? ' disabled title="Already on the list"' : '') + '>' + esc(x) + '</button>';
-    }).join('') + '</div>' + (storeOff(a.store) ? '<div class="hint">' + esc(a.store) + ' is switched off, so this row waits until it\'s on.</div>' : '') + '</div>';
+      var on = listedAt(state.pick.upc, x);
+      return '<button class="chip" type="button" data-act="add-store" data-store="' + esc(x) + '" aria-pressed="' + (x === a.store) + '"' + (on ? ' title="On the list: tap to change it"' : '') + '>' + esc(x) + (on ? '<span class="onlist"> ✓</span>' : '') + '</button>';
+    }).join('') + '</div><div class="hint">✓ on the list: tap to change it. Any other store adds it.</div>' +
+      (storeOff(a.store) ? '<div class="hint">' + esc(a.store) + ' is switched off, so this row waits until it\'s on.</div>' : '') + '</div>';
     var it = readItem(a.store, a.item), spec = ITEM[a.store] || { label: 'Store item id', ph: '' };
     h += '<div class="field"><label for="a-item">' + esc(spec.label) + '</label><input id="a-item" autocomplete="off" placeholder="' + esc(spec.ph) + '" value="' + esc(a.item) + '">';
     if (a.store === 'Publix') {
@@ -424,10 +433,12 @@
       '<select id="a-uom">' + uomOptions(a.uom) + '</select></div></div></div>' +
       '<div class="hint">' + esc(a.from) + (a.store === "Sam's" ? ' Sam\'s sells cases: set the units per pack to the case count.' : '') + ' ' + BOX_HINT + '</div>' +
       priceField('a-', a.price);
-    var next = left.filter(function (x) { return x !== a.store; })[0];
-    h += '<div class="actions"><button class="btn" type="button" data-act="add-cancel">Cancel</button>' +
-      '<button class="btn" type="button" data-act="add-save"' + (state.busy ? ' disabled' : '') + '>Save</button>' +
-      (next ? '<button class="btn primary next" type="button" data-act="add-next"' + (state.busy ? ' disabled' : '') + '>Save and add ' + esc(next) + ' &rarr;</button>' : '') + '</div></section>';
+    var next = nextStore(a.store), dis = state.busy ? ' disabled' : '';
+    h += '<div class="actions"><button class="btn" type="button" data-act="add-cancel">' + (a.rowId || state.updating ? 'Done' : 'Cancel') + '</button>' +
+      '<button class="btn" type="button" data-act="add-save"' + dis + '>Save</button>' +
+      (next ? '<button class="btn primary next" type="button" data-act="add-next"' + dis + '>Save and ' + (listedAt(state.pick.upc, next) ? 'go to ' : 'add ') + esc(next) + ' &rarr;</button>' : '') + '</div>' +
+      // A store the product is on can come off without deleting the whole product.
+      (a.rowId ? '<div class="actions"><button class="btn danger" type="button" data-act="store-off"' + dis + '>Turn off at ' + esc(a.store) + '</button></div>' : '') + '</section>';
     return h;
   }
 
@@ -435,6 +446,9 @@
   function val(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; }
   function packFrom(prefix) { return { units_per_pack: Number(val(prefix + 'units')), unit_size: Number(val(prefix + 'size')), unit_size_uom: val(prefix + 'uom') }; }
   function rowById(id) { return state.rows.filter(function (r) { return String(r.id) === String(id); })[0]; }
+  function closeDialog() { state.adding = false; state.updating = false; state.pick = null; state.add = null; state.filter = ''; }
+  // Turning a row back on is a create with the same product, store, pack and size: it revives the row with its history (E-57).
+  function createBody(x) { return { operation: 'create', upc: x.upc, store: x.store, page_url: x.page_url, store_item_id: x.store_item_id, units_per_pack: x.units_per_pack, unit_size: Number(x.unit_size), unit_size_uom: x.unit_size_uom }; }
 
   // Remember which product groups are open, so a redraw after a save doesn't fold them back up.
   root.addEventListener('toggle', function (e) {
@@ -462,15 +476,12 @@
     }
     if (e.target.id === 'a-size' && state.add) state.add.size = e.target.value;
     if (e.target.id === 'a-price' && state.add) state.add.price = e.target.value;
-    if (e.target.id === 'e-id') { var w = document.getElementById('e-id-warn'); if (w) w.innerHTML = shapeWarn(e.target.getAttribute('data-store'), e.target.value); }
-    if (state.editId && /^e-/.test(e.target.id)) { state.editDirty = true; document.getElementById('e-save').disabled = state.busy; }
   });
   root.addEventListener('change', function (e) {
     var t = e.target;
     if (state.add && t.id === 'a-units') state.add.units = Number(t.value) || 0;
     if (state.add && t.id === 'a-size') state.add.size = t.value;
     if (state.add && t.id === 'a-uom') state.add.uom = t.value;
-    if (state.editId && /^e-/.test(t.id)) { state.editDirty = true; document.getElementById('e-save').disabled = state.busy; }
     if (t.getAttribute('data-act') === 'usual') {
       var name = t.getAttribute('data-name'), store = t.value, upc = t.getAttribute('data-upc');
       var prev = (rowsFor(upc)[0] || {}).usual_store;
@@ -488,61 +499,75 @@
       write({ operation: 'set_store', store: store, switched_on: on }, function () { return store + (on ? ' is on: checked each run.' : ' is off: check it by hand.'); }, null,
         { body: { operation: 'set_store', store: store, switched_on: !on }, text: store + ' is ' + (on ? 'off' : 'on') + ' again.' });
     } else if (act === 'add-open') {
-      state.adding = true; state.pick = null; state.add = null; state.filter = ''; render();
+      state.adding = true; state.updating = false; state.pick = null; state.add = null; state.filter = ''; render();
       loadProducts().then(render).catch(function (err) { BBMessages.show('error', 'Couldn\'t load the product catalog. Reload the page to try again.', { why: err.message }); });
     } else if (act === 'add-cancel') {
-      state.adding = false; render();
+      closeDialog(); render();
     } else if (act === 'pick') {
-      state.pick = { upc: b.getAttribute('data-upc'), name: b.getAttribute('data-name') }; state.add = startAdd(state.pick); render();
+      state.pick = { upc: b.getAttribute('data-upc'), name: b.getAttribute('data-name') }; state.add = loadStore(state.pick, firstStore(state.pick, false)); render();
     } else if (act === 'unpick') {
-      state.pick = null; state.add = null; state.filter = ''; render();
+      state.pick = null; state.add = null; state.filter = ''; state.updating = false; render();
+      loadProducts().then(render).catch(function (err) { BBMessages.show('error', 'Couldn\'t load the product catalog. Reload the page to try again.', { why: err.message }); });
     } else if (act === 'add-store') {
-      state.add.store = b.getAttribute('data-store'); state.add.item = ''; render();
+      state.add = loadStore(state.pick, b.getAttribute('data-store')); render();
     } else if (act === 'add-save' || act === 'add-next') {
-      var a = state.add, it = readItem(a.store, a.item), pick = state.pick, goNext = act === 'add-next';
+      var a = state.add, it = readItem(a.store, a.item), pick = state.pick, nxt = act === 'add-next' ? nextStore(a.store) : null;
       if (!it.id || !it.link) { BBMessages.show('error', 'Nothing changed. ' + ((ITEM[a.store] || {}).paste ? 'Paste the ' + a.store + ' product page link.' : 'Type the ' + ITEM[a.store].label.toLowerCase() + ', or paste the link.')); return; }
-      var body = { operation: 'create', upc: pick.upc, store: a.store, page_url: it.link, store_item_id: it.id, units_per_pack: Number(a.units), unit_size: Number(a.size), unit_size_uom: a.uom };
       var label = pick.name + ' at ' + a.store, keep = { units: a.units, size: a.size, uom: a.uom }, price = priceText(a.price);
+      var moveOn = function () { state.open[pick.upc] = true; if (nxt) state.add = loadStore(pick, nxt, listedAt(pick.upc, nxt) ? null : keep); else closeDialog(); };
+      var nextSaid = function () { return nxt ? ' Next: ' + nxt + '.' : ''; };
+      if (a.rowId) {
+        // Update: the row changes only where something changed. A store whose link is built from the id keeps its saved link
+        // while the id is the same; for Kroger and Publix the box is the link, so the id always comes from it (Red Baron, 2026-11-14).
+        var r = a.orig;
+        var link = !(ITEM[a.store] || {}).paste && it.id === r.store_item_id ? r.page_url : it.link;
+        var eb = { operation: 'update', list_id: r.id, page_url: link, store_item_id: it.id, units_per_pack: Number(a.units), unit_size: Number(a.size), unit_size_uom: a.uom };
+        var was = hasPrice(r) ? Number(r.regular_price).toFixed(2) : '';
+        var rowChanged = eb.page_url !== r.page_url || eb.store_item_id !== r.store_item_id || eb.units_per_pack !== Number(r.units_per_pack) ||
+          eb.unit_size !== Number(r.unit_size) || normUom(eb.unit_size_uom) !== normUom(r.unit_size_uom);
+        var priceChanged = price !== was;
+        var priceSaid = price ? 'regular price ' + (isFinite(Number(price)) ? money(price) : price) : 'regular price cleared';
+        if (!rowChanged && !priceChanged) { moveOn(); render(); if (nxt) BBMessages.show('success', label + ': nothing changed.' + nextSaid()); return; }
+        var esteps = [];
+        if (rowChanged) esteps.push(eb);
+        // The price goes on the row the update leaves: the same row, or the new one a new pack starts.
+        if (priceChanged) esteps.push(function (prev) { var id = (prev && prev[0] && prev[0].id) || r.id; return { operation: 'set_price', list_id: id, regular_price: price }; });
+        write(esteps, function (changed) {
+          if (!rowChanged) return label + ': ' + priceSaid + '.' + nextSaid();
+          var res = changed && changed[0] && changed[0].result;
+          return label + (res === 'updated' ? ' saved.' : ': new pack saved as a new row; the old one keeps its history.') + (priceChanged ? ' The ' + priceSaid + '.' : '') + nextSaid();
+        }, moveOn,
+          // A price change alone can be undone from the banner, like the usual store.
+          !rowChanged ? { body: { operation: 'set_price', list_id: r.id, regular_price: was }, text: label + ': ' + (was ? 'regular price ' + money(was) : 'regular price cleared') + ' again.' } : null);
+        return;
+      }
+      var body = { operation: 'create', upc: pick.upc, store: a.store, page_url: it.link, store_item_id: it.id, units_per_pack: Number(a.units), unit_size: Number(a.size), unit_size_uom: a.uom };
       var steps = [body];
       if (price) steps.push(function (prev) { var id = prev && prev[0] && prev[0].id; return id ? { operation: 'set_price', list_id: id, regular_price: price } : null; });
       write(steps, function (changed) {
         var back = changed && changed[0] && changed[0].result === 'turned_on';
-        var next = goNext && state.add && state.add.store ? ' Next: ' + state.add.store + '.' : '';
-        return (back ? label + ' is back on the list, with its price history.' : label + ' added.') + (price ? ' Regular price ' + money(price) + '.' : '') + next;
-      }, function () {
-        state.open[pick.upc] = true;
-        if (goNext) state.add = startAdd(pick, keep);
-        else { state.adding = false; state.pick = null; state.add = null; state.filter = ''; }
-      });
-    } else if (act === 'edit') {
-      state.editId = Number(b.getAttribute('data-id')); state.editDirty = false; render();
-    } else if (act === 'edit-cancel') {
-      state.editId = null; render();
-    } else if (act === 'edit-save') {
-      var r = rowById(b.getAttribute('data-id'));
-      var eb = Object.assign({ operation: 'update', list_id: r.id, page_url: val('e-url'), store_item_id: val('e-id') }, packFrom('e-'));
-      var was = hasPrice(r) ? Number(r.regular_price).toFixed(2) : '', now = priceText(val('e-price'));
-      var rowChanged = eb.page_url !== r.page_url || eb.store_item_id !== r.store_item_id || eb.units_per_pack !== Number(r.units_per_pack) ||
-        eb.unit_size !== Number(r.unit_size) || normUom(eb.unit_size_uom) !== normUom(r.unit_size_uom);
-      var priceChanged = now !== was, who = r.product_name + ' at ' + r.store;
-      var priceSaid = now ? 'regular price ' + (isFinite(Number(now)) ? money(now) : now) : 'regular price cleared';
-      if (!rowChanged && !priceChanged) { state.editId = null; render(); return; }
-      var esteps = [];
-      if (rowChanged) esteps.push(eb);
-      // The price goes on the row the edit leaves: the same row, or the new one a new pack starts.
-      if (priceChanged) esteps.push(function (prev) { var id = (prev && prev[0] && prev[0].id) || r.id; return { operation: 'set_price', list_id: id, regular_price: now }; });
-      write(esteps, function (changed) {
-        if (!rowChanged) return who + ': ' + priceSaid + '.';
-        var res = changed && changed[0] && changed[0].result;
-        return who + (res === 'updated' ? ' saved.' : ': new pack saved as a new row; the old one keeps its history.') + (priceChanged ? ' The ' + priceSaid + '.' : '');
-      }, function () { state.editId = null; },
-        // A price change alone can be undone from the banner, like the usual store.
-        !rowChanged ? { body: { operation: 'set_price', list_id: r.id, regular_price: was }, text: who + ': ' + (was ? 'regular price ' + money(was) : 'regular price cleared') + ' again.' } : null);
-    } else if (act === 'off') {
-      var x = rowById(b.getAttribute('data-id'));
-      write({ operation: 'turn_off', list_id: x.id }, function () { return x.product_name + ' at ' + x.store + ' turned off. Its price history is kept.'; }, null,
-        { body: { operation: 'create', upc: x.upc, store: x.store, page_url: x.page_url, store_item_id: x.store_item_id, units_per_pack: x.units_per_pack, unit_size: Number(x.unit_size), unit_size_uom: x.unit_size_uom },
-          text: x.product_name + ' at ' + x.store + ' is back on the list.' });
+        return (back ? label + ' is back on the list, with its price history.' : label + ' added.') + (price ? ' Regular price ' + money(price) + '.' : '') + nextSaid();
+      }, moveOn);
+    } else if (act === 'store-off') {
+      var so = state.add.orig, sp = state.pick, sname = sp.name + ' at ' + so.store;
+      if (!window.confirm('Turn off ' + sname + '? It leaves the price check. Its price history is kept.')) return;
+      write({ operation: 'turn_off', list_id: so.id }, function () { return sname + ' turned off. Its price history is kept.'; }, function () { state.add = loadStore(sp, so.store); },
+        { body: createBody(so), text: sname + ' is back on the list.' });
+    } else if (act === 'p-update') {
+      var ur = rowsFor(b.getAttribute('data-upc'))[0];
+      if (!ur) return;
+      state.adding = true; state.updating = true; state.pick = { upc: ur.upc, name: ur.product_name }; state.filter = '';
+      state.add = loadStore(state.pick, firstStore(state.pick, true));
+      render();
+      var panel = root.querySelector('section.panel'); if (panel && panel.scrollIntoView) panel.scrollIntoView({ block: 'start' });
+    } else if (act === 'p-delete') {
+      var drows = rowsFor(b.getAttribute('data-upc'));
+      if (!drows.length) return;
+      var dname = drows[0].product_name, dn = drows.length;
+      // Rows are never removed: Delete turns each store row off, keeping its price history, and Undo turns them back on.
+      if (!window.confirm('Delete ' + dname + ' from the price check? Its ' + (dn === 1 ? 'store row is' : dn + ' store rows are') + ' turned off. Their price history is kept.')) return;
+      write(drows.map(function (x) { return { operation: 'turn_off', list_id: x.id }; }), function () { return dname + ' deleted from the price check (' + drows.map(function (x) { return x.store; }).join(', ') + '). Its price history is kept.'; }, null,
+        { body: drows.map(createBody), text: dname + ' is back on the list.' });
     }
   });
 
