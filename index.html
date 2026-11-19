@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Basement Inventory v3.3.2</title>
+  <title>Basement Inventory v3.4.0</title>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script src="session.js"></script>
   <style>
@@ -257,6 +257,29 @@
     .date-settings label { margin-top: 10px; }
     .check-row { display: flex; align-items: center; gap: 10px; min-height: 44px; font-weight: 600; }
     .check-row input { width: 24px; height: 24px; margin: 0; }
+    /* PRD-006 photo dates (trial) */
+    .date-photo-btn { margin-top: 8px; }
+    .date-photo { margin-top: 8px; }
+    .date-crop { display: block; width: 100%; max-height: 40vh; object-fit: contain; background: #222; border-radius: 6px; cursor: zoom-in; }
+    .date-photo-status { margin-top: 6px; font-size: 0.9rem; }
+    .date-photo-status.ok { color: #1f5f2a; }
+    .date-photo-status.warn { color: #8a5300; }
+    .date-photo-status.err { color: #b23b3b; }
+    .date-photo-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+    .date-photo-acts .btn { flex: 1 1 40%; min-height: 44px; }
+    .date-unclear { outline: 3px solid #e0a100; outline-offset: 1px; background: #fff7df; }
+    .spin { display: inline-block; width: 12px; height: 12px; margin-right: 6px; border: 2px solid #999; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -1px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .camera { position: fixed; inset: 0; z-index: 1000; background: #000; }
+    .camera video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .cam-box { position: absolute; left: 8%; right: 8%; top: 34%; height: 18%; border: 3px solid #fff; border-radius: 8px; box-shadow: 0 0 0 9999px rgba(0,0,0,0.45); }
+    .cam-hint { position: absolute; left: 16px; right: 16px; top: 22%; color: #fff; font-size: 0.95rem; text-align: center; text-shadow: 0 1px 2px #000; }
+    .cam-ctrl { position: absolute; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; padding: 16px; }
+    .cam-ctrl .btn { min-height: 44px; }
+    .cam-shutter { width: 72px; height: 72px; border-radius: 50%; border: 5px solid #fff; background: rgba(255,255,255,0.35); cursor: pointer; }
+    .photo-full { position: fixed; inset: 0; z-index: 1001; background: #000; overflow: auto; touch-action: pinch-zoom; display: flex; flex-direction: column; }
+    .photo-full img { width: 100%; height: auto; }
+    .photo-full .btn { position: sticky; bottom: 0; min-height: 44px; }
     .replacement-option { display: block; width: 100%; min-height: 44px; padding: 8px; border: none; border-bottom: 1px solid #eee; background: #fff; text-align: left; cursor: pointer; }
     
     .loading {
@@ -306,7 +329,7 @@
 <body>
   <div class="container">
     <a class="breadcrumb" href="/">← Operator Tools</a>
-    <h1>📦 Basement Inventory v3.3.2</h1>
+    <h1>📦 Basement Inventory v3.4.0</h1>
 
     <!-- Session-level messages (start/end session, camera errors) -->
     <div id="message" class="message hidden"></div>
@@ -1315,9 +1338,11 @@
           '<label class="date-year-label">Year<select class="date-year">' + years + '</select></label>' +
         '</div>' +
         '<div class="date-readback blank"></div>' +
+        (photoOn() ? photoRowHtml() : '') +
         (rows.children.length ? '<button type="button" class="date-row-remove">Remove this date</button>' : '');
-      row.addEventListener('input', function() { updateReadback(row); });
-      row.addEventListener('change', function() { updateReadback(row); });
+      row.addEventListener('input', function(e) { if (e.target && e.target.classList) e.target.classList.remove('date-unclear'); updateReadback(row); });
+      row.addEventListener('change', function(e) { if (e.target && e.target.classList) e.target.classList.remove('date-unclear'); updateReadback(row); });
+      wirePhotoRow(row);
       var remove = row.querySelector('.date-row-remove');
       if (remove) remove.onclick = function() { row.remove(); updateSaveLabel(); };
       rows.appendChild(row);
@@ -1342,6 +1367,7 @@
       dateOfferSource = source === 'button' && !(dateOfferSource === 'in' && !offer.classList.contains('hidden')) ? 'button' : 'in';
       document.getElementById('dateSkipBtn').textContent = dateOfferSource === 'in' ? 'Skip' : 'Cancel';
       setDateBusy(false);
+      if (photoOn() && !document.getElementById('photoSwitchNote')) document.getElementById('dateRows').insertAdjacentHTML('beforebegin', photoSwitchNote());
       offer.classList.remove('hidden');
       document.getElementById('addDateBtn').classList.add('hidden');
     }
@@ -1363,21 +1389,26 @@
     function saveDates() {
       if (dateBusy || !currentProduct) return;
       var rows = document.querySelectorAll('#dateRows .date-row');
-      var dates = [], seen = {};
+      var dates = [], entries = [], seen = {}, printFormat = null;
       for (var i = 0; i < rows.length; i++) {
         var iso = rowDate(rows[i]);
         if (iso === '') continue;
         if (iso === null) { showBanner('Nothing saved. Date ' + (i + 1) + ' isn\'t a full date: it needs the month, day and year.', 'error'); return; }
-        if (!seen[iso]) { seen[iso] = true; dates.push(iso); }
+        if (seen[iso]) continue;
+        seen[iso] = true; dates.push(iso);
+        var entry = photoEntry(rows[i], iso);
+        entries.push(entry);
+        // The product remembers how it prints its date only from a read the person accepted (PRD Behavior 11).
+        var pr = rows[i].__photo && rows[i].__photo.response;
+        if (!printFormat && entry.answer === 'accepted' && pr && pr.print_format) printFormat = pr.print_format;
       }
       if (!dates.length) { showBanner('Nothing saved. Enter the date on the package, or tap ' + (dateOfferSource === 'in' ? 'Skip' : 'Cancel') + '.', 'error'); return; }
       var product = currentProduct;
       var what = product.name + ', ' + dates.map(showDate).join('; ');
       setDateBusy(true, 'Saving…');
-      apiPostJson(DATE_WRITE, {
-        action: 'add_dates', upc: product.upc, place: BASEMENT, offered_from: 'scan',
-        dates: dates.map(function(d) { return { date: d, source: 'typed' }; })
-      }).then(function(res) {
+      var payload = { action: 'add_dates', upc: product.upc, place: BASEMENT, offered_from: 'scan', dates: entries };
+      if (printFormat) payload.print_format = printFormat;
+      apiPostJson(DATE_WRITE, payload).then(function(res) {
         var b = res.body || {};
         if (!res.ok || b.ok !== true) throw new Error(b.error || ('status ' + res.status));
         var added = Array.isArray(b.added) ? b.added : [];
@@ -1395,6 +1426,7 @@
 
     function skipDates() {
       if (dateBusy || !currentProduct) return;
+      answerUnsavedReads();   // a photo that gave no usable date reaches the monthly review either way
       if (dateOfferSource !== 'in') { hideDateOffer(); return; }   // Cancel on "Add a date": not an offer, nothing to record
       var product = currentProduct;
       setDateBusy(true);
@@ -1491,6 +1523,298 @@
         btn.disabled = false;
         btn.textContent = 'Save date settings';
         showBanner('Nothing saved. Couldn\'t save the date settings for ' + product.name + '. (' + err.message + ')', 'error');
+      });
+    }
+
+    // ============================================
+    // PHOTO DATES (PRD-006, trial). Behind a switch kept in this browser only: open the page once with ?photo=on (or ?photo=off).
+    // The camera shows a guide box; only the box and a small margin are sent to Dated Stock — Photo Read. The read fills the
+    // row's month, day and year for the person to check against the crop; nothing saves until they tap Save.
+    // ============================================
+    var PHOTO_READ = '/dated-stock/photo-read';
+    var PHOTO_KEY = 'bb.photoDates';
+    var READ_LIMIT_MS = 20000;   // one photo's reads, turns included, stop at 20 seconds (PRD Behavior 14)
+    var MAX_SIDE = 1568, MAX_BYTES = 1000000;
+    var camStream = null, camRow = null;
+
+    (function setPhotoSwitchFromUrl() {
+      try {
+        var v = new URLSearchParams(window.location.search).get('photo');
+        if (v === 'on') localStorage.setItem(PHOTO_KEY, 'on');
+        if (v === 'off') localStorage.removeItem(PHOTO_KEY);
+      } catch (e) { /* storage blocked: the switch stays off */ }
+    })();
+    function photoOn() {
+      try { return localStorage.getItem(PHOTO_KEY) === 'on'; } catch (e) { return false; }
+    }
+    function turnPhotoOff() {
+      try { localStorage.removeItem(PHOTO_KEY); } catch (e) { /* nothing to undo */ }
+      Array.prototype.forEach.call(document.querySelectorAll('.date-photo-btn, #photoSwitchNote'), function(el) { el.remove(); });
+      showBanner('Photo dates are off on this phone. Typed entry only.', 'success');
+    }
+
+    // The photo parts of one date row, added by addDateRow when the switch is on.
+    function photoRowHtml() {
+      return '<button type="button" class="btn btn-secondary date-photo-btn">📷 Take photo</button>' +
+        '<div class="date-photo hidden"><img class="date-crop" alt="The date as photographed">' +
+          '<div class="date-photo-status"></div>' +
+          '<div class="date-photo-acts hidden"></div></div>';
+    }
+    function wirePhotoRow(row) {
+      var btn = row.querySelector('.date-photo-btn');
+      if (btn) btn.onclick = function() { openCamera(row); };
+      var img = row.querySelector('.date-crop');
+      if (img) img.onclick = function() { if (row.__photo && row.__photo.full) showFullPhoto(row.__photo.full); };
+    }
+    function photoSwitchNote() {
+      return '<p class="date-hint" id="photoSwitchNote">Photo dates are on for this phone (trial). <a href="#" onclick="turnPhotoOff(); return false;">Turn off</a></p>';
+    }
+
+    // ---- Camera
+    function cameraEl() {
+      var el = document.getElementById('camera');
+      if (el) return el;
+      el = document.createElement('div');
+      el.id = 'camera';
+      el.className = 'camera hidden';
+      el.innerHTML =
+        '<video id="camVideo" playsinline muted autoplay></video>' +
+        '<div class="cam-box" aria-hidden="true"></div>' +
+        '<div class="cam-hint">Fit the date in the box. Sideways? Turn the photo after. Clear bottle? Put something white behind it.</div>' +
+        '<div class="cam-ctrl"><button type="button" class="btn btn-secondary" id="camCancel">Cancel</button>' +
+          '<button type="button" class="cam-shutter" id="camShutter" aria-label="Take photo"></button><span></span></div>';
+      document.body.appendChild(el);
+      document.getElementById('camCancel').onclick = closeCamera;
+      document.getElementById('camShutter').onclick = takePhoto;
+      return el;
+    }
+    function openCamera(row) {
+      if (typeof stopScanner === 'function') stopScanner();
+      camRow = row;
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { cameraRefused(row, 'this browser has no camera access'); return; }
+      var el = cameraEl();
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 3840 }, height: { ideal: 2160 } }, audio: false })
+        .then(function(stream) {
+          camStream = stream;
+          var v = document.getElementById('camVideo');
+          v.srcObject = stream;
+          el.classList.remove('hidden');
+          return v.play();
+        })
+        .catch(function(err) { closeCamera(); cameraRefused(row, err && err.name ? err.name : String(err)); });
+    }
+    function closeCamera() {
+      if (camStream) camStream.getTracks().forEach(function(t) { t.stop(); });
+      camStream = null;
+      // Let go of the stopped stream, so a second photo never captures a frame from the first.
+      var v = document.getElementById('camVideo');
+      if (v) v.srcObject = null;
+      var el = document.getElementById('camera');
+      if (el) el.classList.add('hidden');
+    }
+    // A refused camera opens typed entry with one line on allowing it; the photo button never does nothing (PRD Behavior 14).
+    function cameraRefused(row, why) {
+      showBanner('The camera is off for this page. Type the date below, or allow the camera in the browser\'s site settings. (' + why + ')', 'error');
+      var m = row && row.querySelector('.date-month');
+      if (m) m.focus();
+    }
+
+    // The guide box on screen, mapped onto the video's own pixels (the video fills the screen, cropped at the edges).
+    function boxInVideo(v) {
+      var box = document.querySelector('#camera .cam-box').getBoundingClientRect();
+      var r = v.getBoundingClientRect();
+      var scale = Math.max(r.width / v.videoWidth, r.height / v.videoHeight);
+      var offX = (r.width - v.videoWidth * scale) / 2, offY = (r.height - v.videoHeight * scale) / 2;
+      var mx = box.width * 0.04, my = box.height * 0.08;   // a small margin around the box
+      var x = (box.left - r.left - mx - offX) / scale, y = (box.top - r.top - my - offY) / scale;
+      var w = (box.width + 2 * mx) / scale, h = (box.height + 2 * my) / scale;
+      x = Math.max(0, x); y = Math.max(0, y);
+      return { x: x, y: y, w: Math.min(w, v.videoWidth - x), h: Math.min(h, v.videoHeight - y) };
+    }
+    function takePhoto() {
+      var v = document.getElementById('camVideo');
+      if (!v || !v.videoWidth || !camStream) return;   // no live picture yet: the tap does nothing until the camera shows
+      var full = document.createElement('canvas');
+      full.width = v.videoWidth; full.height = v.videoHeight;
+      full.getContext('2d').drawImage(v, 0, 0);
+      var b = boxInVideo(v);
+      var crop = document.createElement('canvas');
+      var k = Math.min(1, MAX_SIDE / Math.max(b.w, b.h));
+      crop.width = Math.round(b.w * k); crop.height = Math.round(b.h * k);
+      crop.getContext('2d').drawImage(full, b.x, b.y, b.w, b.h, 0, 0, crop.width, crop.height);
+      var row = camRow;
+      closeCamera();
+      if (!row || !row.isConnected) return;
+      // The whole frame stays in this page only, for the zoom view; it is never sent or stored (PRD rule).
+      row.__photo = { source: crop, turned: 0, full: full.toDataURL('image/jpeg', 0.85), review_id: null, response: null, filled: null, attempt: 0 };
+      readRowPhoto(row, null);
+    }
+
+    // The crop turned clockwise by quarters, as a JPEG under 1 MB, base64 without the data: prefix.
+    function cropJpeg(p) {
+      var t = ((p.turned % 360) + 360) % 360;
+      var c = document.createElement('canvas');
+      var w = p.source.width, h = p.source.height;
+      c.width = t % 180 ? h : w; c.height = t % 180 ? w : h;
+      var g = c.getContext('2d');
+      g.translate(c.width / 2, c.height / 2);
+      g.rotate(t * Math.PI / 180);
+      g.drawImage(p.source, -w / 2, -h / 2);
+      var url = '';
+      for (var q = 9; q >= 5; q--) {
+        url = c.toDataURL('image/jpeg', q / 10);
+        if (url.length * 0.75 < MAX_BYTES) break;
+      }
+      return url;
+    }
+    function showFullPhoto(url) {
+      var o = document.createElement('div');
+      o.className = 'photo-full';
+      o.innerHTML = '<img alt="The whole photo"><button type="button" class="btn btn-secondary">Close</button>';
+      o.querySelector('img').src = url;
+      o.querySelector('button').onclick = function() { o.remove(); };
+      document.body.appendChild(o);
+    }
+
+    // ---- The read
+    function photoStatus(row, html, kind) {
+      var s = row.querySelector('.date-photo-status');
+      s.innerHTML = html;
+      s.className = 'date-photo-status' + (kind ? ' ' + kind : '');
+    }
+    function photoActs(row, buttons) {
+      var a = row.querySelector('.date-photo-acts');
+      a.innerHTML = '';
+      buttons.forEach(function(bt) {
+        var b = document.createElement('button');
+        b.type = 'button'; b.className = 'btn ' + (bt.primary ? 'btn-in' : 'btn-secondary'); b.textContent = bt.label;
+        b.onclick = bt.run;
+        a.appendChild(b);
+      });
+      a.classList.toggle('hidden', !buttons.length);
+    }
+    function clearUnclear(row) {
+      Array.prototype.forEach.call(row.querySelectorAll('.date-unclear'), function(el) { el.classList.remove('date-unclear'); });
+    }
+    // One photo's reads. started is when the first read went out: the 20 seconds cover every turn and retry.
+    function readRowPhoto(row, started, lastTurnAsked) {
+      var p = row.__photo;
+      if (!p) return;
+      started = started || Date.now();
+      var token = ++p.attempt;
+      var url = cropJpeg(p);
+      row.querySelector('.date-photo').classList.remove('hidden');
+      row.querySelector('.date-crop').src = url;
+      clearUnclear(row);
+      photoActs(row, []);
+      photoStatus(row, '<span class="spin" aria-hidden="true"></span>Reading the date…');
+      var left = READ_LIMIT_MS - (Date.now() - started);
+      var timer = new Promise(function(res) { setTimeout(function() { res({ timedOut: true }); }, Math.max(0, left)); });
+      var call = apiPostJson(PHOTO_READ, { upc: currentProduct.upc, place: BASEMENT, crop: url.split(',')[1], crop_type: 'image/jpeg', turned: p.turned });
+      Promise.race([call, timer]).then(function(res) {
+        if (row.__photo !== p || p.attempt !== token) return;   // a newer photo or read took over
+        if (res.timedOut) { readFailed(row, 'Took too long to read. Type the date instead.', false); return; }
+        var b = res.body || {};
+        if (res.status === 429 || b.code === 'daily_cap') { readFailed(row, escapeHtml(b.error || 'Photo reads are done for today.') , false); return; }
+        if (!res.ok || b.ok !== true) { readFailed(row, 'Couldn\'t read the date. Nothing saved. <i>(' + escapeHtml(b.error || ('status ' + res.status)) + ')</i>', true); return; }
+        p.review_id = b.review_id || null;
+        p.response = b;
+        // A turned read: turn the crop the way it says and read again; a quarter turn that stays turned tries the other quarter once.
+        if (b.result === 'no_date' && b.reason === 'turned' && b.turn) {
+          var delta = { clockwise: 90, counterclockwise: 270, half: 180 }[b.turn];
+          if (!lastTurnAsked) { p.turned += delta; readRowPhoto(row, started, b.turn); return; }
+          if (lastTurnAsked !== 'half' && b.turn !== 'half') { p.turned += 180; readRowPhoto(row, started, 'half'); return; }
+          photoStatus(row, 'The date still reads sideways. Tap ↻ until it reads left to right, or type it below.', 'warn');
+          photoActs(row, [{ label: '↻ Turn and read again', primary: true, run: function() { p.turned += 90; readRowPhoto(row, null, 'manual'); } }, retakeButton(row)]);
+          return;
+        }
+        applyRead(row, b);
+      }).catch(function(err) {
+        if (row.__photo !== p || p.attempt !== token) return;
+        readFailed(row, 'Couldn\'t read the date. Nothing saved. <i>(' + escapeHtml(err.message) + ')</i>', true);
+      });
+    }
+    function retakeButton(row) { return { label: 'Retake', run: function() { openCamera(row); } }; }
+    // A failed read is not "no date": it offers Try again with the same crop, or typed entry (PRD Behavior 14).
+    function readFailed(row, html, canRetry) {
+      var p = row.__photo;
+      if (p) { p.response = null; p.review_id = null; }
+      photoStatus(row, html, 'err');
+      photoActs(row, (canRetry ? [{ label: 'Try again', primary: true, run: function() { readRowPhoto(row, null); } }] : []).concat([retakeButton(row)]));
+      var m = row.querySelector('.date-month'); if (m) m.focus();
+    }
+    function setField(row, cls, value) {
+      var el = row.querySelector(cls);
+      if (cls === '.date-year' && value && !Array.prototype.some.call(el.options, function(o) { return o.value === String(value); })) {
+        var o = document.createElement('option'); o.value = String(value); o.textContent = String(value); el.appendChild(o);
+      }
+      el.value = value === null || value === undefined ? '' : String(value);
+    }
+    // Fill the row from the read, mark what to check, and remember what the read said so Save can tell accepted from corrected.
+    function applyRead(row, b) {
+      var p = row.__photo;
+      var PART = { month: '.date-month', day: '.date-day', year: '.date-year' };
+      var pad2 = function(n) { return String(n).padStart(2, '0'); };
+      if (b.result === 'date') {
+        var parts = b.date.split('-');
+        setField(row, '.date-year', parts[0]); setField(row, '.date-month', parts[1]); setField(row, '.date-day', String(Number(parts[2])));
+        p.filled = { y: parts[0], m: parts[1], d: String(Number(parts[2])) };
+        var notes = [];
+        (b.highlight || []).forEach(function(h) {
+          (h.parts || []).forEach(function(part) { var el = row.querySelector(PART[part]); if (el) el.classList.add('date-unclear'); });
+          notes.push('the ' + escapeHtml(h.char) + ' could be ' + escapeHtml(h.could_be));
+        });
+        var msg = 'Read: <b>' + escapeHtml(b.printed_text || '') + '</b>. Check it against the photo, then Save.';
+        if (b.yearChosen) msg += ' No year is printed: ' + escapeHtml(parts[0]) + ' is the nearest. Check the year.';
+        if (notes.length) msg += ' Check the marked part: ' + notes.join('; ') + '.';
+        photoStatus(row, msg, notes.length || b.yearChosen ? 'warn' : 'ok');
+        photoActs(row, [retakeButton(row)]);
+      } else if (b.result === 'month_only') {
+        setField(row, '.date-year', b.year); setField(row, '.date-month', pad2(b.month)); setField(row, '.date-day', '');
+        p.filled = { y: String(b.year), m: pad2(b.month), d: null };
+        row.querySelector('.date-day').classList.add('date-unclear');
+        photoStatus(row, 'Read: <b>' + escapeHtml(b.printed_text || '') + '</b>. Only the month and year are printed. Type the day you want to use, then Save.', 'warn');
+        photoActs(row, [retakeButton(row)]);
+        row.querySelector('.date-day').focus();
+      } else if (b.result === 'ambiguous_order') {
+        photoStatus(row, 'Read: <b>' + escapeHtml(b.printed_text || '') + '</b>. Which part is the month?', 'warn');
+        var pick = function(month, day) { return function() {
+          setField(row, '.date-year', b.year); setField(row, '.date-month', pad2(month)); setField(row, '.date-day', String(day));
+          p.filled = { y: String(b.year), m: pad2(month), d: String(day) };
+          photoStatus(row, 'Check it against the photo, then Save.', 'ok');
+          photoActs(row, [retakeButton(row)]); updateReadback(row);
+        }; };
+        photoActs(row, [{ label: MONTHS[b.a - 1] + ' ' + b.b, run: pick(b.a, b.b) }, { label: MONTHS[b.b - 1] + ' ' + b.a, run: pick(b.b, b.a) }, retakeButton(row)]);
+      } else {
+        // no_date or reject: typed entry, with a turn offered first for "no date" (PRD Behavior 2).
+        p.filled = null;
+        photoStatus(row, b.result === 'no_date' ? 'No date found in the photo. Turn it and try again, or type it below.' : 'Couldn\'t use this read. Type the date below.', 'warn');
+        photoActs(row, (b.result === 'no_date' ? [{ label: '↻ Turn it and try again', primary: true, run: function() { p.turned += 90; readRowPhoto(row, null, 'manual'); } }] : []).concat([retakeButton(row)]));
+        row.querySelector('.date-month').focus();
+      }
+      updateReadback(row);
+    }
+
+    // What Save sends for one row: a photo date accepted or corrected, or a typed date over a read that gave none.
+    // A crop is kept only for a corrected or typed-over read (Threat model Decision 2); an accepted read keeps none.
+    function photoEntry(row, iso) {
+      var p = row.__photo;
+      if (!p || !p.review_id) return { date: iso, source: 'typed' };
+      var crop = cropJpeg(p).split(',')[1];
+      if (!p.filled) return { date: iso, source: 'typed', review_id: p.review_id, answer: 'typed', crop: crop, crop_type: 'image/jpeg' };
+      var parts = iso.split('-');
+      var same = parts[0] === p.filled.y && parts[1] === p.filled.m && (p.filled.d === null || String(Number(parts[2])) === p.filled.d);
+      return same ? { date: iso, source: 'photo', review_id: p.review_id, answer: 'accepted' }
+        : { date: iso, source: 'photo', review_id: p.review_id, answer: 'corrected', crop: crop, crop_type: 'image/jpeg' };
+    }
+    // A read that ended with nothing saved (Skip, Cancel) is answered "rejected" when it gave no usable date, so the miss
+    // reaches the monthly review with its crop. A good read left unsaved stays unanswered: unconfirmed is a valid ending.
+    function answerUnsavedReads() {
+      Array.prototype.forEach.call(document.querySelectorAll('#dateRows .date-row'), function(row) {
+        var p = row.__photo;
+        if (!p || !p.review_id || p.filled) return;
+        apiPostJson(DATE_WRITE, { action: 'answer_read', review_id: p.review_id, answer: 'rejected', crop: cropJpeg(p).split(',')[1], crop_type: 'image/jpeg' })
+          .catch(function() { /* the read stays unanswered; nothing else depends on it */ });
       });
     }
 
