@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Basement Inventory v3.5.0</title>
+  <title>Basement Inventory v3.5.1</title>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script src="session.js"></script>
   <style>
@@ -171,7 +171,8 @@
     .product-name { font-size: 1.2rem; font-weight: 600; }
     .product-upc { color: #666; font-size: 0.9rem; }
     .product-category { color: #4472C4; font-size: 0.9rem; margin-top: 3px; }
-    .product-qty { font-size: 1.5rem; font-weight: 700; color: #548235; margin-top: 5px; }
+    .product-qty { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 1.5rem; font-weight: 700; color: #548235; margin-top: 5px; }
+    .product-qty .link-btn { flex-shrink: 0; margin: 0 -4px 0 0; }
     
     .qty-buttons {
       display: flex;
@@ -231,7 +232,7 @@
     .banner-actions button { min-height: 44px; padding: 8px 14px; border: 1px solid currentColor; border-radius: 6px; background: #fff; color: inherit; font-weight: 600; cursor: pointer; }
     .retired-marker { display: inline-block; padding: 2px 8px; border: 1px solid #555; border-radius: 4px; font-size: 0.8rem; font-weight: 700; color: #333; }
     .retired-note { margin-top: 8px; font-size: 0.9rem; color: #333; }
-    .retired-toggle { width: 100%; min-height: 44px; margin-top: 15px; border: none; border-radius: 8px; background: #e0e0e0; font-weight: 600; cursor: pointer; }
+    .retired-toggle { width: 100%; min-height: 44px; margin-top: 15px; padding: 0 14px; border: none; border-radius: 8px; background: #e0e0e0; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 1rem; }
     .retired-explainer { margin: 6px 0 0; font-size: 0.85rem; color: #555; }
     /* PRD-006: the date offer after an IN, the dates on file, the date settings */
     .date-offer, .dates-on-file, .date-settings { margin-top: 12px; padding: 12px; border-radius: 8px; background: #eef3fb; }
@@ -255,14 +256,35 @@
     .date-line button:disabled { opacity: 0.5; }
     /* PRD-006: dating at a location. Counts are the basement's, so the count controls hide there. */
     body.at-location .count-only { display: none !important; }
-    .date-place { display: flex; flex-direction: column; gap: 6px; }
-    .date-place label { font-weight: 600; }
-    .date-place select { min-height: 44px; font-size: 16px; }
-    .date-place-note { padding: 8px 10px; border-radius: 6px; background: #fff4d6; color: #5a4300; font-weight: 600; }
+    .place-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .place-row label { margin: 0; font-size: 0.9rem; color: #555; white-space: nowrap; }
+    .place-row select { flex: 1; min-width: 0; min-height: 44px; margin: 0; font-size: 16px; }
+    .place-bar { display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin-bottom: 15px; border-radius: 8px; background: #fff4d6; color: #5a4300; border-left: 6px solid #e0a100; }
+    .place-bar-text { flex: 1; min-width: 0; }
+    .place-bar-text strong { display: block; font-size: 1.05rem; }
+    .place-bar-text span { font-size: 0.85rem; }
+    .place-bar button { flex-shrink: 0; min-height: 44px; padding: 0 12px; border: 1px solid #5a4300; border-radius: 6px; background: #fff; color: #5a4300; font-weight: 600; cursor: pointer; }
     .date-line .found-btns { display: flex; gap: 6px; flex-shrink: 0; }
     .date-line button.none-there { border-color: #6b7280; color: #374151; }
-    .date-settings summary { min-height: 44px; display: flex; align-items: center; font-weight: 600; cursor: pointer; }
     .date-settings label { margin-top: 10px; }
+    /* Folds: anything not core to the page opens and closes, with a chevron that turns (Randy, 2026-11-19) */
+    .fold > summary { list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 44px; font-weight: 600; cursor: pointer; }
+    .fold > summary::-webkit-details-marker { display: none; }
+    .fold > summary::after, .retired-toggle::after { content: ''; flex-shrink: 0; width: 9px; height: 9px; border-right: 2px solid #555; border-bottom: 2px solid #555; transform: rotate(45deg); margin: -4px 4px 0 0; transition: transform 0.15s; }
+    .fold[open] > summary::after, .retired-toggle[aria-expanded="true"]::after { transform: rotate(-135deg); margin-top: 4px; }
+    .fold > summary:focus-visible { outline: 2px solid #4472C4; outline-offset: 2px; }
+    .fold-note { font-weight: 400; color: #999; }
+    .recent-fold > summary { font-size: 0.85rem; color: #555; }
+    /* The product panel's groups: the count, the dates, product settings */
+    .back-link { display: inline-flex; align-items: center; min-height: 44px; margin: -6px 0 6px; padding: 0 4px; border: none; background: none; color: #4472C4; font-size: 0.95rem; font-weight: 600; cursor: pointer; }
+    .link-btn { display: block; min-height: 44px; padding: 0 4px; border: none; background: none; color: #4472C4; font-size: 0.95rem; font-weight: 600; cursor: pointer; }
+    .back-link:focus-visible, .link-btn:focus-visible { outline: 2px solid #4472C4; outline-offset: 2px; }
+    .dates-group { margin-top: 18px; padding-top: 4px; border-top: 1px solid #e3e3e3; }
+    .product-settings { margin-top: 18px; padding: 4px 12px 12px; border-radius: 8px; background: #f1f1f1; }
+    .product-settings .date-settings { margin-top: 4px; }
+    .retire-controls { margin-top: 12px; }
+    .date-never { display: block; width: 100%; min-height: 44px; margin-top: 6px; border: none; background: none; color: #4472C4; font-size: 0.95rem; font-weight: 600; cursor: pointer; }
+    .date-never:disabled { opacity: 0.5; }
     .check-row { display: flex; align-items: center; gap: 10px; min-height: 44px; font-weight: 600; }
     .check-row input { width: 24px; height: 24px; margin: 0; }
     /* PRD-006 photo dates */
@@ -337,7 +359,7 @@
 <body>
   <div class="container">
     <a class="breadcrumb" href="/">← Operator Tools</a>
-    <h1>📦 Basement Inventory v3.5.0</h1>
+    <h1>📦 Basement Inventory v3.5.1</h1>
 
     <!-- Session-level messages (start/end session, camera errors) -->
     <div id="message" class="message hidden"></div>
@@ -346,7 +368,13 @@
     <div id="banner" class="message hidden" role="status"></div>
 
     <!-- Session Panel — always visible, above tabs -->
-    <div id="sessionPanel"></div>
+    <!-- PRD-006: dating at a location. The bar says where dates go; a checkout session is a basement job, so it hides here. -->
+    <div id="datePlaceNote" class="place-bar hidden">
+      <div class="place-bar-text"><strong id="placeBarTitle"></strong><span>Dates you save go there. Basement counts are hidden.</span></div>
+      <button type="button" onclick="setDatePlace(BASEMENT)">Back to Basement</button>
+    </div>
+
+    <div id="sessionPanel" class="count-only"></div>
 
     <div class="tabs">
       <button class="tab active" onclick="showTab('scan')">Scan</button>
@@ -356,14 +384,12 @@
     <!-- Scan Tab -->
     <div id="scanTab">
 
-      <!-- PRD-006: where dates are saved. Basement is receiving and counts; a location is dating stock on its shelf. -->
-      <div class="card date-place">
-        <label for="datePlace">Dating at</label>
-        <select id="datePlace" onchange="setDatePlace(this.value)"><option value="Basement">Basement</option></select>
-        <div id="datePlaceNote" class="date-place-note hidden"></div>
-      </div>
-
       <div class="card">
+        <!-- PRD-006: where dates are saved. Basement is receiving and counts; a location is dating stock on its shelf. -->
+        <div class="place-row">
+          <label for="datePlace">Dates go to</label>
+          <select id="datePlace" onchange="setDatePlace(this.value)"><option value="Basement">Basement</option></select>
+        </div>
         <div class="scanner-container">
           <div id="reader"></div>
         </div>
@@ -378,27 +404,39 @@
         </div>
       </div>
       
-      <!-- Product Panel (shown after scan) -->
+      <!-- Product Panel (shown after scan, or from the Inventory list). Grouped by job (Randy, 2026-11-19): the count, then the
+           dates, then product settings, folded and only in the view from the Inventory list. -->
       <div id="productPanel" class="card hidden">
+
+        <!-- The view from the Inventory list goes back to it; a scan result needs no way out, the next scan replaces it -->
+        <button type="button" id="backToListBtn" class="back-link hidden" onclick="backToList()">← Back to list</button>
 
         <!-- Transaction-level messages live here -->
         <div id="productMessage" class="message hidden"></div>
 
+        <!-- The count -->
         <div id="productInfo" class="product-info">
           <div class="product-name" id="productName">-</div>
           <div class="product-upc" id="productUpc">-</div>
           <div class="product-category" id="productCategory">-</div>
-          <div class="product-qty">Current: <span id="productQty">0</span></div>
+          <!-- Fix the count sits on the same line as the count it fixes (Randy, 2026-11-19) -->
+          <div class="product-qty"><span>Current: <span id="productQty">0</span></span><button type="button" class="link-btn count-only" onclick="showSetQty()" id="setQtyBtn">Fix the count</button></div>
           <div id="productRetired" class="retired-note hidden"></div>
         </div>
-        
+
+        <div id="setQtySection" class="location-section hidden count-only" style="background:#e8f4e8;">
+          <label>Set quantity to:</label>
+          <input type="number" id="setQtyInput" min="0" value="0">
+          <button class="btn btn-in" onclick="confirmSetQty()" style="margin-top:10px;">Confirm</button>
+        </div>
+
         <label class="count-only">Quantity to add/remove:</label>
         <div class="qty-buttons count-only">
           <button class="qty-btn" onclick="adjustQty(-1)">−</button>
           <div class="qty-display" id="qtyDisplay">1</div>
           <button class="qty-btn" onclick="adjustQty(1)">+</button>
         </div>
-        
+
         <!-- Location picker: only shown for OUT when no session is active -->
         <div id="locationSection" class="location-section hidden count-only">
           <label>Location (for OUT):</label>
@@ -406,73 +444,67 @@
             <option value="">Select location...</option>
           </select>
         </div>
-        
+
         <div class="action-buttons count-only">
           <button class="btn btn-in" onclick="processIn()">IN</button>
           <button class="btn btn-out" onclick="showLocationAndProcessOut()">OUT</button>
         </div>
 
-        <!-- PRD-006: dating stock already in the basement, with no change to the count -->
-        <button type="button" class="btn btn-secondary hidden" id="addDateBtn" onclick="openDateForm()" style="margin-top:10px;">Add a date</button>
+        <!-- The dates: what's on file, the form, and Add a date, together and always open -->
+        <div id="datesGroup" class="dates-group">
+          <!-- PRD-006: the chosen place's dates on file; a basement date is removed, a location date is marked found -->
+          <div id="datesOnFile" class="dates-on-file hidden"></div>
 
-        <!-- PRD-006: the date offer, shown after an IN of a tracked product, or from Add a date. One save sends every date on the form. -->
-        <div id="dateOffer" class="date-offer hidden">
-          <div class="date-offer-title" id="dateOfferTitle">Date on the package</div>
-          <p class="date-hint">Bought several? Check for another date.</p>
-          <div id="dateRows"></div>
-          <button type="button" class="btn btn-secondary date-add" onclick="addDateRow()">+ Add another date</button>
-          <div class="action-buttons">
-            <button type="button" class="btn btn-in" id="dateSaveBtn" onclick="saveDates()">Save date</button>
-            <button type="button" class="btn btn-secondary" id="dateSkipBtn" onclick="skipDates()">Skip</button>
+          <!-- PRD-006: the date offer, shown after an IN of a tracked product, or from Add a date. One save sends every date on the form. -->
+          <div id="dateOffer" class="date-offer hidden">
+            <div class="date-offer-title" id="dateOfferTitle">Date on the package</div>
+            <p class="date-hint">Bought several? Check for another date.</p>
+            <div id="dateRows"></div>
+            <button type="button" class="btn btn-secondary date-add" onclick="addDateRow()">+ Add another date</button>
+            <div class="action-buttons">
+              <button type="button" class="btn btn-in" id="dateSaveBtn" onclick="saveDates()">Save date</button>
+              <button type="button" class="btn btn-secondary" id="dateSkipBtn" onclick="skipDates()">Skip</button>
+            </div>
+            <button type="button" class="date-never" id="dateNeverBtn" onclick="neverAskDate()">Never ask for this one</button>
           </div>
+
+          <!-- PRD-006: dating stock already here, with no change to the count -->
+          <button type="button" class="btn btn-secondary hidden" id="addDateBtn" onclick="openDateForm()" style="margin-top:10px;">+ Add a date</button>
         </div>
 
-        <!-- PRD-006: basement dates on file; only a person removes one -->
-        <div id="datesOnFile" class="dates-on-file hidden"></div>
-        
-        <div id="setQtySection" class="location-section hidden count-only" style="background:#e8f4e8;">
-          <label>Set quantity to:</label>
-          <input type="number" id="setQtyInput" min="0" value="0">
-          <button class="btn btn-in" onclick="confirmSetQty()" style="margin-top:10px;">Confirm</button>
-        </div>
-        
-        <button class="btn btn-secondary count-only" onclick="showSetQty()" style="margin-top:10px;" id="setQtyBtn">
-          Set Qty
-        </button>
-        
-        <!-- PRD-006: per-product date settings, collapsed -->
-        <details id="dateSettings" class="date-settings hidden">
-          <summary>Date settings</summary>
-          <label class="check-row"><input type="checkbox" id="noDateNeeded"> No date needed</label>
-          <p class="date-hint">For things that sell long before any date, like Coke. Scans stop offering a date. Switch it back any time.</p>
-          <label for="pullDays">Pull days</label>
-          <input type="number" id="pullDays" min="0" max="365" inputmode="numeric">
-          <p class="date-hint">Days before the printed date it comes off a location's shelf. 0 pulls on the date; milk is 1.</p>
-          <label for="leadDays">Lead days</label>
-          <input type="number" id="leadDays" min="0" max="365" inputmode="numeric">
-          <p class="date-hint">Days before its date that basement stock should ship or be donated. Usually 14.</p>
-          <button type="button" class="btn btn-secondary" id="dateSettingsBtn" onclick="saveDateSettings()" style="margin-top:10px;">Save date settings</button>
-        </details>
+        <!-- Product settings: set once per product, so folded, on every screen, Retire included (Randy, 2026-11-19) -->
+        <details id="productSettings" class="fold product-settings hidden">
+          <summary>Product settings</summary>
+          <!-- PRD-006: per-product date settings. A scan switches a product off with "Never ask for this one". -->
+          <div id="dateSettings" class="date-settings">
+            <div class="dates-title">Dates</div>
+            <label class="check-row"><input type="checkbox" id="noDateNeeded"> No date needed</label>
+            <p class="date-hint">For things that sell long before any date, like Coke. Scans stop offering a date.</p>
+            <label for="pullDays">Pull days</label>
+            <input type="number" id="pullDays" min="0" max="365" inputmode="numeric">
+            <p class="date-hint">Days before the printed date it comes off a location's shelf. 0 pulls on the date; milk is 1.</p>
+            <label for="leadDays">Lead days</label>
+            <input type="number" id="leadDays" min="0" max="365" inputmode="numeric">
+            <p class="date-hint">Days before its date that basement stock shows in the Monday email, to remove. Usually 14.</p>
+            <button type="button" class="btn btn-secondary" id="dateSettingsBtn" onclick="saveDateSettings()" style="margin-top:10px;">Save date settings</button>
+          </div>
 
-        <!-- Retire and Reactivate: only in the detail view opened from the product list, never a scan result (PRD-003 Behavior 5) -->
-        <div id="retireControls" class="hidden">
-          <button id="retireBtn" class="btn btn-secondary" onclick="showRetireSection()" style="margin-top:10px;">Retire</button>
-          <button id="reactivateBtn" class="btn btn-secondary" onclick="sendRetire({ action: 'reactivate' })" style="margin-top:10px;">Reactivate</button>
-          <div id="retireSection" class="location-section hidden" style="margin-top:10px;">
-            <p style="margin:0 0 10px;font-size:0.9rem;">Retire means you no longer buy this. It stays findable when scanned, and sales still match. Reactivate undoes it. Example: retire Bounty 1 Pack, replaced by Double Roll.</p>
-            <label for="replacementInput">Replacement (optional):</label>
-            <input type="text" id="replacementInput" placeholder="Search by name or UPC" autocomplete="off" oninput="renderReplacementOptions()">
-            <div id="replacementOptions"></div>
-            <div class="action-buttons" style="margin-top:10px;">
-              <button id="confirmRetireBtn" class="btn btn-secondary" onclick="confirmRetire()">Retire</button>
-              <button id="cancelRetireBtn" class="btn btn-secondary" onclick="hideRetireSection()">Cancel</button>
+          <!-- Retire and Reactivate (PRD-003) -->
+          <div id="retireControls" class="retire-controls">
+            <button id="retireBtn" class="btn btn-secondary" onclick="showRetireSection()" style="margin-top:10px;">Retire</button>
+            <button id="reactivateBtn" class="btn btn-secondary" onclick="sendRetire({ action: 'reactivate' })" style="margin-top:10px;">Reactivate</button>
+            <div id="retireSection" class="location-section hidden" style="margin-top:10px;">
+              <p style="margin:0 0 10px;font-size:0.9rem;">Retire means you no longer buy this. It stays findable when scanned, and sales still match. Reactivate undoes it. Example: retire Bounty 1 Pack, replaced by Double Roll.</p>
+              <label for="replacementInput">Replacement (optional):</label>
+              <input type="text" id="replacementInput" placeholder="Search by name or UPC" autocomplete="off" oninput="renderReplacementOptions()">
+              <div id="replacementOptions"></div>
+              <div class="action-buttons" style="margin-top:10px;">
+                <button id="confirmRetireBtn" class="btn btn-secondary" onclick="confirmRetire()">Retire</button>
+                <button id="cancelRetireBtn" class="btn btn-secondary" onclick="hideRetireSection()">Cancel</button>
+              </div>
             </div>
           </div>
-        </div>
-
-        <button class="btn btn-secondary" onclick="resetScan()" style="margin-top:10px;">
-          Scan Another
-        </button>
+        </details>
       </div>
       
       <!-- New Product Panel -->
@@ -518,10 +550,11 @@
       </div>
       
       <div id="recentActivityCard" class="card">
-        <div style="font-size:0.85rem;font-weight:600;color:#555;margin-bottom:8px;">
-          Recent activity <span style="font-weight:400;color:#999;">· last 4 hours</span>
-        </div>
-        <div id="recentActivity" class="loading">Loading recent activity...</div>
+        <!-- Not core: folded, and this browser remembers whether it was left open -->
+        <details id="recentFold" class="fold recent-fold" ontoggle="rememberRecentFold(this.open)">
+          <summary><span>Recent activity <span class="fold-note">· last 4 hours</span></span></summary>
+          <div id="recentActivity" class="loading">Loading recent activity...</div>
+        </details>
       </div>
     </div>
     
@@ -675,7 +708,12 @@
       if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
     }
     
+    // Recent activity is folded; this browser remembers whether it was left open (a convenience only).
+    var RECENT_KEY = 'bb.recentOpen';
+    function rememberRecentFold(open) { try { localStorage.setItem(RECENT_KEY, open ? 'open' : 'closed'); } catch (e) {} }
+
     document.addEventListener('DOMContentLoaded', function() {
+      try { document.getElementById('recentFold').open = localStorage.getItem(RECENT_KEY) === 'open'; } catch (e) {}
       loadLocations();
       renderSessionPanel();
       loadInventory();
@@ -900,6 +938,7 @@
       hideDateOffer();
       renderDates(product);
       if (atLocation() && isTracked(product)) openDateForm();   // dating is the only thing to do at a location
+      document.getElementById('backToListBtn').classList.toggle('hidden', !detailView);
       document.getElementById('productPanel').classList.remove('hidden');
       document.getElementById('newProductPanel').classList.add('hidden');
     }
@@ -935,9 +974,13 @@
       document.getElementById('qtyDisplay').textContent = transactionQty;
     }
     
+    // Fix the count opens Set quantity; a second tap closes it (Randy, 2026-11-19).
     function showSetQty() {
-      document.getElementById('setQtySection').classList.remove('hidden');
-      document.getElementById('setQtyInput').value = currentProduct.qty || 0;
+      var section = document.getElementById('setQtySection');
+      var opening = section.classList.contains('hidden');
+      section.classList.toggle('hidden', !opening);
+      document.getElementById('setQtyBtn').setAttribute('aria-expanded', String(opening));
+      if (opening) document.getElementById('setQtyInput').value = currentProduct.qty || 0;
     }
     
     function confirmSetQty() {
@@ -1230,7 +1273,7 @@
       if (retired.length > 0) {
         var open = retiredGroupOpen || openRetired === true;
         html +=
-          '<button class="retired-toggle" aria-expanded="' + open + '" onclick="toggleRetiredGroup()">Retired (' + retired.length + ')</button>' +
+          '<button class="retired-toggle" aria-expanded="' + open + '" onclick="toggleRetiredGroup()"><span>Retired (' + retired.length + ')</span></button>' +
           '<p class="retired-explainer">No longer bought. Still found when scanned, and sales still match.</p>' +
           '<div class="' + (open ? '' : 'hidden') + '">' + retired.map(renderProductRow).join('') + '</div>';
       }
@@ -1256,6 +1299,12 @@
       filterList();
     }
     
+    // "← Back to list": closes the product opened from the Inventory list and goes back to the list.
+    function backToList() {
+      resetScan();
+      showTab('list');
+    }
+
     function selectProductFromList(upc) {
       initAudio();
       showTab('scan');
@@ -1323,9 +1372,8 @@
       datePlace = opt.value; datePlaceName = opt.textContent;
       if (!restoring) { try { localStorage.setItem(PLACE_KEY, JSON.stringify({ place: datePlace, day: todayIso() })); } catch (e) {} }
       document.body.classList.toggle('at-location', atLocation());
-      var note = document.getElementById('datePlaceNote');
-      note.textContent = atLocation() ? 'Dates you save go to ' + datePlaceName + '. Basement counts don\'t change here.' : '';
-      note.classList.toggle('hidden', !atLocation());
+      document.getElementById('placeBarTitle').textContent = atLocation() ? '📍 Dating the shelf at ' + datePlaceName : '';
+      document.getElementById('datePlaceNote').classList.toggle('hidden', !atLocation());
       document.getElementById('dateOfferTitle').textContent = 'Date on the package' + (atLocation() ? ' at ' + datePlaceName : '');
       if (changed && currentProduct && currentProduct.openDates) {
         // A form opened for the other place closes; a photo read on it is answered so it still reaches the review.
@@ -1433,7 +1481,7 @@
     }
     function setDateBusy(busy, label) {
       dateBusy = busy;
-      ['dateSaveBtn', 'dateSkipBtn'].forEach(function(id) { document.getElementById(id).disabled = busy; });
+      ['dateSaveBtn', 'dateSkipBtn', 'dateNeverBtn'].forEach(function(id) { document.getElementById(id).disabled = busy; });
       if (busy && label) document.getElementById('dateSaveBtn').textContent = label;
       if (!busy) updateSaveLabel();
     }
@@ -1494,13 +1542,44 @@
         });
     }
 
+    // "Never ask for this one": switches the product to no date needed from the form that asked. After an IN the offer
+    // is recorded as skipped first, so the offer count stays whole; then the switch. Asks first, since every scan stops asking.
+    function neverAskDate() {
+      if (dateBusy || !currentProduct) return;
+      var product = currentProduct;
+      if (!confirm('Stop asking for a date on ' + product.name + '? You can switch it back under Product settings.')) return;
+      answerUnsavedReads();
+      setDateBusy(true);
+      var skip = dateOfferSource === 'in'
+        ? apiPostJson(DATE_WRITE, { action: 'add_dates', upc: product.upc, place: datePlace, offered_from: 'scan', dates: [], outcome: 'skipped' })
+        : Promise.resolve({ ok: true, body: { ok: true } });
+      skip.then(function(res) {
+        var b = res.body || {};
+        if (!res.ok || b.ok !== true) throw new Error(b.error || ('status ' + res.status));
+        return apiPostJson(DATE_WRITE, { action: 'set_product', upc: product.upc, no_date_needed: true });
+      }).then(function(res) {
+        var b = res.body || {};
+        if (!res.ok || b.ok !== true) throw new Error(b.error || ('status ' + res.status));
+        product.noDateNeeded = true;
+        hideDateOffer();
+        showBanner('No date needed: ' + product.name + '. Scans won\'t ask for a date.', 'success');
+        refreshDates(product.upc);
+      }).catch(function(err) {
+        setDateBusy(false);
+        showBanner('Nothing changed. Couldn\'t switch ' + product.name + ' to no date needed. (' + err.message + ')', 'error');
+      });
+    }
+
     // The chosen place's dates on file, oldest first. A basement date has Remove; a location date has "Pulled it" and
     // "None there" (PRD-006: a location date is marked found, never removed).
     function renderDates(product) {
       var box = document.getElementById('datesOnFile');
-      var settings = document.getElementById('dateSettings');
-      settings.classList.toggle('hidden', !!product.retiredAt);
-      settings.open = false;
+      var settings = document.getElementById('productSettings');
+      if (settings.classList.contains('hidden') || currentProduct !== settings.__product) settings.open = false;   // closed each time a product opens
+      settings.__product = currentProduct;
+      // On every screen, folded, with Retire inside it (Randy, 2026-11-19, reversing PRD-003 Behavior 5's Inventory-only rule).
+      settings.classList.remove('hidden');
+      document.getElementById('dateSettings').classList.toggle('hidden', !!product.retiredAt);   // a retired product takes no dates
       document.getElementById('addDateBtn').classList.toggle('hidden', !isTracked(product) || !document.getElementById('dateOffer').classList.contains('hidden'));
       document.getElementById('noDateNeeded').checked = product.noDateNeeded;
       document.getElementById('pullDays').value = product.pullDays;
@@ -1508,7 +1587,7 @@
       var mine = product.openDates.filter(function(d) { return d.place === datePlace; })
         .sort(function(a, b) { return a.expiry_date < b.expiry_date ? -1 : a.expiry_date > b.expiry_date ? 1 : a.id - b.id; });
       if (!mine.length && product.noDateNeeded) {
-        box.innerHTML = '<div class="date-hint" style="margin:0">No date needed for this product.</div>';
+        box.innerHTML = '<div class="date-hint" style="margin:0">No date needed for this product. Change it under Product settings.</div>';
         box.classList.remove('hidden');
         return;
       }
@@ -1973,7 +2052,6 @@
           }
         }
       }
-      document.getElementById('retireControls').classList.toggle('hidden', !detailView);
       document.getElementById('retireBtn').classList.toggle('hidden', !!product.retiredAt);
       document.getElementById('reactivateBtn').classList.toggle('hidden', !product.retiredAt);
       hideRetireSection();
