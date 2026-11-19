@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Pick List (v1.8)</title>
+  <title>Pick List (v1.9)</title>
   <link rel="stylesheet" href="/shared/components.css">
 <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -191,6 +191,17 @@
     .modal-box p { margin-bottom: 16px; color: #555; font-size: 0.9rem; }
     .modal-actions { display: flex; gap: 10px; }
     .modal-actions .btn { flex: 1; margin-bottom: 0; }
+
+    /* PRD-006: date ticks at the pick. The basement dates on file go with the stock; each ticked date is moved to the location at Finalize. */
+    .date-note { font-size: 0.82rem; font-weight: 600; color: #8a5300; margin-top: 2px; }
+    .carry-box { margin-bottom: 12px; padding: 10px 12px; border-radius: 8px; background: #eef3fb; }
+    .carry-title { font-size: 0.88rem; font-weight: 600; color: #333; margin-bottom: 8px; }
+    .carry-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .carry-chip { min-height: 44px; padding: 0 14px; border: 2px solid #4472C4; border-radius: 22px; background: #fff; color: #4472C4; font-size: 0.9rem; font-weight: 600; cursor: pointer; }
+    .carry-chip[aria-pressed="true"] { background: #4472C4; color: #fff; }
+    .carry-chip:focus-visible { outline: 2px solid #333; outline-offset: 2px; }
+    .carry-one { font-size: 0.9rem; font-weight: 600; color: #333; }
+    .carry-hint { font-size: 0.8rem; color: #555; margin-top: 6px; }
   </style>
 </head>
 <body>
@@ -274,7 +285,7 @@
       isToday = !parsedDate || isSameDate(parsedDate, today);
       
       document.getElementById('header').innerHTML =
-        '<h1>📋 ' + capitalize(locationParam) + ' Pick List (v1.8)</h1>' +
+        '<h1>📋 ' + capitalize(locationParam) + ' Pick List (v1.9)</h1>' +
         '<div class="meta" id="metaLine">' + dateParam + ' — ' + (modeParam === 'light' ? 'Light Stock' : 'Full Stock') + '</div>' +
         '<div class="explainer">Days left: what\'s at the location, at the last 30 days\' pace.</div>';
 
@@ -316,7 +327,7 @@
           items = payload.items || [];
           hasPriorSession = payload.has_prior_session === true;
           items.forEach(function(item) {
-            itemState[item.upc] = { expanded: false, touched: false, qty: 0 };
+            itemState[item.upc] = { expanded: false, touched: false, qty: 0, carry: startTicks(item) };
           });
         });
     }
@@ -352,6 +363,67 @@
       var parts = [keepTogether('Bring ' + item.bring_qty), loc, keepTogether('In basement ' + onHand)];
       if (isSkipped) parts.push('SKIPPED');
       return parts.join('&nbsp;\u00b7 ');
+    }
+
+    // ---- PRD-006 Behavior 5: date ticks at the pick ----
+    // basement_dates: the product's open basement dates, oldest first, from Pick List — Read. carry_date_ids: what was ticked
+    // on the saved pick (null: never ticked). The ticks live in itemState, so a redraw of the list never drops them.
+    var DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    var MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    function showDate(iso) {
+      var d = new Date(iso + 'T00:00:00Z');
+      return DAY_NAMES[d.getUTCDay()] + ' ' + MONTH_NAMES[d.getUTCMonth()] + ' ' + d.getUTCDate() + ', ' + d.getUTCFullYear();
+    }
+    function todayIso() {
+      var d = new Date();
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+    function datesOf(item) { return Array.isArray(item.basement_dates) ? item.basement_dates : []; }
+    function dateLabel(d) { return showDate(d.expiry_date) + (d.expiry_date < todayIso() ? ' · Expired' : ''); }
+    // Before a pick, the oldest date starts ticked (one date: carried without a tap). A picked item shows its saved ticks
+    // (carry_date_ids) on its line; an unpick starts the ticks over from here.
+    function startTicks(item) {
+      var ids = datesOf(item).map(function(d) { return d.id; });
+      return ids.length ? [ids[0]] : [];
+    }
+    function toggleCarry(upc, id) {
+      var state = itemState[upc];
+      var at = state.carry.indexOf(id);
+      if (at >= 0) state.carry.splice(at, 1); else state.carry.push(id);
+      render();
+    }
+    function carryHtml(item) {
+      var dates = datesOf(item), state = itemState[item.upc];
+      if (!dates.length) return '';
+      if (dates.length === 1) {
+        return '<div class="carry-box"><div class="carry-one">Date going with it: ' + dateLabel(dates[0]) + '</div>' +
+          '<div class="carry-hint">It moves to this location when you finish the session.</div></div>';
+      }
+      return '<div class="carry-box"><div class="carry-title">Tick each date in the bag</div><div class="carry-chips">' +
+        dates.map(function(d) {
+          var on = state.carry.indexOf(d.id) >= 0;
+          return '<button type="button" class="carry-chip" aria-pressed="' + on + '" onclick="toggleCarry(\'' + item.upc + '\', ' + d.id + ')">' +
+            (on ? '✓ ' : '') + dateLabel(d) + '</button>';
+        }).join('') +
+        '</div><div class="carry-hint">Ticked dates move to this location when you finish the session.</div></div>';
+    }
+    // The pick line names the oldest date, so the right package comes off the shelf first.
+    function oldestNote(item) {
+      var dates = datesOf(item);
+      return dates.length ? '<div class="date-note">Take the oldest first: ' + dateLabel(dates[0]) + '</div>' : '';
+    }
+    function carriedLabels(item) {
+      var ids = Array.isArray(item.carry_date_ids) ? item.carry_date_ids : [];
+      return datesOf(item).filter(function(d) { return ids.indexOf(d.id) >= 0; }).map(dateLabel);
+    }
+    function carriedText(item) {
+      var labels = carriedLabels(item);
+      return labels.length ? ' · Dates: ' + labels.join('; ') : '';
+    }
+    // A picked item's line says which dates go with it, so the list shows it without opening the item.
+    function carriedNote(item) {
+      var labels = carriedLabels(item);
+      return labels.length ? '<div class="date-note">Dates going: ' + labels.join('; ') + '</div>' : '';
     }
 
     function findItem(upc) {
@@ -426,6 +498,7 @@
             '<div class="item-name' + stockoutClass + '">' + item.product_name + (item.is_anchor === true ? ' <span class="anchor-mark">⚑ anchor</span>' : '') + '</div>' +
             carryoverHtml +
             '<div class="item-sub">' + itemLine(item, onHand, isSkipped) + '</div>' +
+            (isSkipped ? '' : isPicked ? carriedNote(item) : oldestNote(item)) +
           '</div>' +
           (isPicked ? '<div class="item-check">✓</div>' : '') +
         '</div>';
@@ -435,7 +508,7 @@
         if (isPicked) {
           expandedHtml =
             '<div class="item-expanded">' +
-              '<div class="picked-label">Picked — ' + item.qty_picked + '</div>' +
+              '<div class="picked-label">Picked — ' + item.qty_picked + carriedText(item) + '</div>' +
               '<button class="btn btn-unpick" onclick="handleUnpick(\'' + item.upc + '\')">Unpick</button>' +
             '</div>';
         } else if (isSkipped) {
@@ -452,6 +525,7 @@
                 '<div class="stepper-qty" id="stepperQty-' + item.upc + '">' + state.qty + '</div>' +
                 '<button class="stepper-btn" onclick="adjustStepper(\'' + item.upc + '\', 1)">+</button>' +
               '</div>' +
+              carryHtml(item) +
               '<button class="btn btn-pick" id="pickBtn-' + item.upc + '" ' +
                 (state.touched ? '' : 'disabled') +
                 ' onclick="handlePick(\'' + item.upc + '\')">Pick</button>' +
@@ -550,7 +624,12 @@
       if (pickInFlight[upc]) return;
       pickInFlight[upc] = true;
       var body = { location: locationParam, date: dateParam, upc: upc, action: action };
-      if (action === 'pick') body.qty_picked = qty;
+      if (action === 'pick') {
+        body.qty_picked = qty;
+        // Only dates still listed for the item; nothing in the bag carries no date (PRD-006 Behavior 5).
+        var listed = datesOf(findItem(upc)).map(function(d) { return d.id; });
+        body.carry_date_ids = qty > 0 ? itemState[upc].carry.filter(function(id) { return listed.indexOf(id) >= 0; }) : [];
+      }
 
       fetch(WRITE_URL, {
         method: 'POST',
@@ -564,6 +643,8 @@
             item.picked = result.body.picked;
             item.qty_picked = result.body.qty_picked;
             item.skipped = result.body.skipped;
+            item.carry_date_ids = Array.isArray(result.body.carry_date_ids) ? result.body.carry_date_ids : null;
+            if (action !== 'pick') itemState[upc].carry = startTicks(item);   // an unpick or skip starts the ticks over
             itemState[upc].touched = false;
             itemState[upc].qty = 0;
             itemState[upc].expanded = (action === 'unpick' || action === 'unskip');
