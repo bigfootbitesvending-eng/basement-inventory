@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Basement Inventory v3.3.0</title>
+  <title>Basement Inventory v3.3.1</title>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script src="session.js"></script>
   <style>
@@ -305,7 +305,7 @@
 <body>
   <div class="container">
     <a class="breadcrumb" href="/">← Operator Tools</a>
-    <h1>📦 Basement Inventory v3.3.0</h1>
+    <h1>📦 Basement Inventory v3.3.1</h1>
 
     <!-- Session-level messages (start/end session, camera errors) -->
     <div id="message" class="message hidden"></div>
@@ -373,7 +373,10 @@
           <button class="btn btn-out" onclick="showLocationAndProcessOut()">OUT</button>
         </div>
 
-        <!-- PRD-006: the date offer, shown after an IN of a tracked product. One save sends every date on the form. -->
+        <!-- PRD-006: dating stock already in the basement, with no change to the count -->
+        <button type="button" class="btn btn-secondary hidden" id="addDateBtn" onclick="openDateForm()" style="margin-top:10px;">Add a date</button>
+
+        <!-- PRD-006: the date offer, shown after an IN of a tracked product, or from Add a date. One save sends every date on the form. -->
         <div id="dateOffer" class="date-offer hidden">
           <div class="date-offer-title">Date on the package</div>
           <p class="date-hint">Bought several? Check for another date.</p>
@@ -992,7 +995,7 @@
               }
             }
             loadRecentActivity();
-            if (type === 'IN') offerDate();
+            if (type === 'IN') offerDate('in');
           } else {
             playErrorBuzz();
             showProductMessage(errorMessage(result, 'Transaction failed'), 'error');
@@ -1319,16 +1322,30 @@
       var n = document.querySelectorAll('#dateRows .date-row').length;
       document.getElementById('dateSaveBtn').textContent = n > 1 ? 'Save ' + n + ' dates' : 'Save date';
     }
-    function offerDate() {
+    // source 'in': offered after an IN, so it ends in a date or a Skip (an offer outcome).
+    // source 'button': the person chose "Add a date" for stock already here; Cancel sends nothing and the count is untouched.
+    var dateOfferSource = null;
+    function offerDate(source) {
       if (!isTracked(currentProduct)) return;
-      document.getElementById('dateRows').innerHTML = '';
-      addDateRow();
+      var offer = document.getElementById('dateOffer');
+      // An IN while the form is already open keeps what was typed; it only becomes an offer that can be skipped.
+      if (offer.classList.contains('hidden') || !document.querySelector('#dateRows .date-row')) {
+        document.getElementById('dateRows').innerHTML = '';
+        addDateRow();
+      }
+      dateOfferSource = source === 'button' && !(dateOfferSource === 'in' && !offer.classList.contains('hidden')) ? 'button' : 'in';
+      document.getElementById('dateSkipBtn').textContent = dateOfferSource === 'in' ? 'Skip' : 'Cancel';
       setDateBusy(false);
-      document.getElementById('dateOffer').classList.remove('hidden');
+      offer.classList.remove('hidden');
+      document.getElementById('addDateBtn').classList.add('hidden');
     }
+    function openDateForm() { offerDate('button'); }
     function hideDateOffer() {
       document.getElementById('dateOffer').classList.add('hidden');
       document.getElementById('dateRows').innerHTML = '';
+      dateOfferSource = null;
+      var btn = document.getElementById('addDateBtn');
+      if (btn) btn.classList.toggle('hidden', !isTracked(currentProduct));
     }
     function setDateBusy(busy, label) {
       dateBusy = busy;
@@ -1347,7 +1364,7 @@
         if (iso === null) { showBanner('Nothing saved. Date ' + (i + 1) + ' isn\'t a full date: it needs the month, day and year.', 'error'); return; }
         if (!seen[iso]) { seen[iso] = true; dates.push(iso); }
       }
-      if (!dates.length) { showBanner('Nothing saved. Enter the date on the package, or tap Skip.', 'error'); return; }
+      if (!dates.length) { showBanner('Nothing saved. Enter the date on the package, or tap ' + (dateOfferSource === 'in' ? 'Skip' : 'Cancel') + '.', 'error'); return; }
       var product = currentProduct;
       var what = product.name + ', ' + dates.map(showDate).join('; ');
       setDateBusy(true, 'Saving…');
@@ -1372,6 +1389,7 @@
 
     function skipDates() {
       if (dateBusy || !currentProduct) return;
+      if (dateOfferSource !== 'in') { hideDateOffer(); return; }   // Cancel on "Add a date": not an offer, nothing to record
       var product = currentProduct;
       setDateBusy(true);
       apiPostJson(DATE_WRITE, { action: 'add_dates', upc: product.upc, place: BASEMENT, offered_from: 'scan', dates: [], outcome: 'skipped' })
@@ -1391,6 +1409,7 @@
       var settings = document.getElementById('dateSettings');
       settings.classList.toggle('hidden', !!product.retiredAt);
       settings.open = false;
+      document.getElementById('addDateBtn').classList.toggle('hidden', !isTracked(product) || !document.getElementById('dateOffer').classList.contains('hidden'));
       document.getElementById('noDateNeeded').checked = product.noDateNeeded;
       document.getElementById('pullDays').value = product.pullDays;
       document.getElementById('leadDays').value = product.leadDays;
