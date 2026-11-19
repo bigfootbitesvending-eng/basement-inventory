@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Basement Inventory v3.3.1</title>
+  <title>Basement Inventory v3.3.2</title>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script src="session.js"></script>
   <style>
@@ -242,6 +242,7 @@
     .date-fields { display: flex; gap: 8px; }
     .date-fields label { flex: 1; min-width: 0; font-size: 0.8rem; color: #555; margin: 0; }
     .date-fields label.date-month-label { flex: 1.6; }
+    .date-fields label.date-year-label { flex: 1.4; }
     .date-fields select, .date-fields input { width: 100%; min-height: 44px; margin-top: 2px; font-size: 1rem; }
     .date-readback { min-height: 1.4em; margin-top: 6px; font-weight: 600; }
     .date-readback.warn { color: #8a5300; }
@@ -305,7 +306,7 @@
 <body>
   <div class="container">
     <a class="breadcrumb" href="/">← Operator Tools</a>
-    <h1>📦 Basement Inventory v3.3.1</h1>
+    <h1>📦 Basement Inventory v3.3.2</h1>
 
     <!-- Session-level messages (start/end session, camera errors) -->
     <div id="message" class="message hidden"></div>
@@ -1280,7 +1281,7 @@
       var m = row.querySelector('.date-month').value;
       var d = row.querySelector('.date-day').value.trim();
       var y = row.querySelector('.date-year').value.trim();
-      if (!m && !d && !y) return '';
+      if (!m && !d) return '';   // the year always has a value: the pulldown starts on this year (Randy, 2026-11-19)
       if (!m || !/^[0-9]{1,2}$/.test(d) || !/^[0-9]{4}$/.test(y)) return null;
       var iso = y + '-' + m + '-' + String(Number(d)).padStart(2, '0');
       var check = new Date(iso + 'T00:00:00Z');
@@ -1290,10 +1291,12 @@
     function updateReadback(row) {
       var out = row.querySelector('.date-readback');
       var iso = rowDate(row);
-      if (iso === '') { out.textContent = 'Month, day and year, as printed'; out.className = 'date-readback blank'; return; }
+      if (iso === '') { out.textContent = 'Month and day as printed, and check the year'; out.className = 'date-readback blank'; return; }
       if (iso === null) { out.textContent = 'Not a full date yet'; out.className = 'date-readback blank'; return; }
       var past = iso < todayIso();
-      out.textContent = showDate(iso) + (past ? ' · Already expired' : '');
+      // A past date on this year's default is most often next year's date with the year left alone.
+      var onDefault = iso.slice(0, 4) === String(new Date().getFullYear());
+      out.textContent = showDate(iso) + (past ? ' · Already expired' + (onDefault ? '. Is the year right?' : '') : '');
       out.className = 'date-readback' + (past ? ' warn' : '');
     }
     function addDateRow() {
@@ -1302,11 +1305,14 @@
       row.className = 'date-row';
       var opts = '<option value="">Month</option>';
       for (var i = 0; i < 12; i++) opts += '<option value="' + String(i + 1).padStart(2, '0') + '">' + MONTHS[i] + '</option>';
+      // Years: two back (stale stock does arrive) to five ahead (cans run to 2030); this year is chosen.
+      var thisYear = new Date().getFullYear(), years = '';
+      for (var yr = thisYear - 2; yr <= thisYear + 5; yr++) years += '<option value="' + yr + '"' + (yr === thisYear ? ' selected' : '') + '>' + yr + '</option>';
       row.innerHTML =
         '<div class="date-fields">' +
           '<label class="date-month-label">Month<select class="date-month">' + opts + '</select></label>' +
           '<label>Day<input class="date-day" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" autocomplete="off"></label>' +
-          '<label>Year<input class="date-year" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off"></label>' +
+          '<label class="date-year-label">Year<select class="date-year">' + years + '</select></label>' +
         '</div>' +
         '<div class="date-readback blank"></div>' +
         (rows.children.length ? '<button type="button" class="date-row-remove">Remove this date</button>' : '');
