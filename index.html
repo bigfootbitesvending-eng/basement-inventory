@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Basement Inventory v3.4.1</title>
+  <title>Basement Inventory v3.4.2</title>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script src="session.js"></script>
   <style>
@@ -329,7 +329,7 @@
 <body>
   <div class="container">
     <a class="breadcrumb" href="/">← Operator Tools</a>
-    <h1>📦 Basement Inventory v3.4.1</h1>
+    <h1>📦 Basement Inventory v3.4.2</h1>
 
     <!-- Session-level messages (start/end session, camera errors) -->
     <div id="message" class="message hidden"></div>
@@ -1778,14 +1778,27 @@
         photoStatus(row, 'Read: <b>' + escapeHtml(b.printed_text || '') + '</b>. Only the month and year are printed, so the day is the last of the month. Check it against the photo, then Save.', 'ok');
         photoActs(row, [retakeButton(row)]);
       } else if (b.result === 'ambiguous_order') {
-        photoStatus(row, 'Read: <b>' + escapeHtml(b.printed_text || '') + '</b>. Which part is the month?', 'warn');
-        var pick = function(month, day) { return function() {
+        photoStatus(row, 'Read: <b>' + escapeHtml(b.printed_text || '') + '</b>. Which part is the month? If you can\'t tell, pick the earlier date.', 'warn');
+        // Where the year sits in the print, so the pick can be remembered as the product's order (PRD Behavior 11: an
+        // unclear order is asked once per product). a is the first of the two numbers in print order, b the second.
+        var nums = (b.printed_text || '').match(/[0-9]+/g) || [];
+        var yearAt = function(s) { return s === String(b.year) || s === String(b.year).slice(2); };
+        var yearLast = nums.length >= 3 && yearAt(nums[nums.length - 1]), yearFirst = !yearLast && nums.length >= 3 && yearAt(nums[nums.length - 3]);
+        var orderFor = function(aIsMonth) { return yearLast ? (aIsMonth ? 'MDY' : 'DMY') : yearFirst && aIsMonth ? 'YMD' : null; };
+        var pick = function(month, day, aIsMonth) { return function() {
           setField(row, '.date-year', b.year); setField(row, '.date-month', pad2(month)); setField(row, '.date-day', String(day));
           p.filled = { y: String(b.year), m: pad2(month), d: String(day) };
+          var order = orderFor(aIsMonth);
+          if (p.response) p.response.print_format = order ? { order: order, year_missing: false, sideways: p.turned !== 0 } : null;
           photoStatus(row, 'Check it against the photo, then Save.', 'ok');
           photoActs(row, [retakeButton(row)]); updateReadback(row);
         }; };
-        photoActs(row, [{ label: MONTHS[b.a - 1] + ' ' + b.b, run: pick(b.a, b.b) }, { label: MONTHS[b.b - 1] + ' ' + b.a, run: pick(b.b, b.a) }, retakeButton(row)]);
+        // The earlier date first, marked as the safer pick: pulling early costs less than selling late.
+        var aFirst = Date.UTC(b.year, b.a - 1, b.b) <= Date.UTC(b.year, b.b - 1, b.a);
+        var asMonthA = { label: MONTHS[b.a - 1] + ' ' + b.b, run: pick(b.a, b.b, true) }, asMonthB = { label: MONTHS[b.b - 1] + ' ' + b.a, run: pick(b.b, b.a, false) };
+        var earlier = aFirst ? asMonthA : asMonthB, later = aFirst ? asMonthB : asMonthA;
+        earlier.label += ' (earlier, safer)';
+        photoActs(row, [earlier, later, retakeButton(row)]);
       } else {
         // no_date or reject: typed entry, with a turn offered first for "no date" (PRD Behavior 2).
         p.filled = null;
