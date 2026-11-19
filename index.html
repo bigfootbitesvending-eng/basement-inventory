@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Basement Inventory v3.2.2</title>
+  <title>Basement Inventory v3.3.0</title>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script src="session.js"></script>
   <style>
@@ -233,6 +233,29 @@
     .retired-note { margin-top: 8px; font-size: 0.9rem; color: #333; }
     .retired-toggle { width: 100%; min-height: 44px; margin-top: 15px; border: none; border-radius: 8px; background: #e0e0e0; font-weight: 600; cursor: pointer; }
     .retired-explainer { margin: 6px 0 0; font-size: 0.85rem; color: #555; }
+    /* PRD-006: the date offer after an IN, the dates on file, the date settings */
+    .date-offer, .dates-on-file, .date-settings { margin-top: 12px; padding: 12px; border-radius: 8px; background: #eef3fb; }
+    .date-offer-title, .dates-title { font-weight: 600; margin-bottom: 4px; }
+    .date-hint { font-size: 0.85rem; color: #555; margin: 0 0 8px; }
+    .date-row { padding: 8px 0; border-top: 1px solid #d4dcea; }
+    .date-row:first-child { border-top: none; }
+    .date-fields { display: flex; gap: 8px; }
+    .date-fields label { flex: 1; min-width: 0; font-size: 0.8rem; color: #555; margin: 0; }
+    .date-fields label.date-month-label { flex: 1.6; }
+    .date-fields select, .date-fields input { width: 100%; min-height: 44px; margin-top: 2px; font-size: 1rem; }
+    .date-readback { min-height: 1.4em; margin-top: 6px; font-weight: 600; }
+    .date-readback.warn { color: #8a5300; }
+    .date-readback.blank { font-weight: 400; color: #777; }
+    .date-row-remove { min-height: 44px; margin-top: 4px; padding: 0 12px; border: none; background: none; color: #4472C4; font-size: 0.9rem; cursor: pointer; }
+    .date-add { margin: 6px 0 10px; }
+    .date-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; border-top: 1px solid #d4dcea; }
+    .date-line:first-of-type { border-top: none; }
+    .date-line button { min-height: 44px; padding: 0 14px; border: 1px solid #b23b3b; border-radius: 6px; background: #fff; color: #b23b3b; font-weight: 600; cursor: pointer; }
+    .date-line button:disabled { opacity: 0.5; }
+    .date-settings summary { min-height: 44px; display: flex; align-items: center; font-weight: 600; cursor: pointer; }
+    .date-settings label { margin-top: 10px; }
+    .check-row { display: flex; align-items: center; gap: 10px; min-height: 44px; font-weight: 600; }
+    .check-row input { width: 24px; height: 24px; margin: 0; }
     .replacement-option { display: block; width: 100%; min-height: 44px; padding: 8px; border: none; border-bottom: 1px solid #eee; background: #fff; text-align: left; cursor: pointer; }
     
     .loading {
@@ -349,6 +372,21 @@
           <button class="btn btn-in" onclick="processIn()">IN</button>
           <button class="btn btn-out" onclick="showLocationAndProcessOut()">OUT</button>
         </div>
+
+        <!-- PRD-006: the date offer, shown after an IN of a tracked product. One save sends every date on the form. -->
+        <div id="dateOffer" class="date-offer hidden">
+          <div class="date-offer-title">Date on the package</div>
+          <p class="date-hint">Bought several? Check for another date.</p>
+          <div id="dateRows"></div>
+          <button type="button" class="btn btn-secondary date-add" onclick="addDateRow()">+ Add another date</button>
+          <div class="action-buttons">
+            <button type="button" class="btn btn-in" id="dateSaveBtn" onclick="saveDates()">Save date</button>
+            <button type="button" class="btn btn-secondary" id="dateSkipBtn" onclick="skipDates()">Skip</button>
+          </div>
+        </div>
+
+        <!-- PRD-006: basement dates on file; only a person removes one -->
+        <div id="datesOnFile" class="dates-on-file hidden"></div>
         
         <div id="setQtySection" class="location-section hidden" style="background:#e8f4e8;">
           <label>Set quantity to:</label>
@@ -360,6 +398,20 @@
           Set Qty
         </button>
         
+        <!-- PRD-006: per-product date settings, collapsed -->
+        <details id="dateSettings" class="date-settings hidden">
+          <summary>Date settings</summary>
+          <label class="check-row"><input type="checkbox" id="noDateNeeded"> No date needed</label>
+          <p class="date-hint">For things that sell long before any date, like Coke. Scans stop offering a date. Switch it back any time.</p>
+          <label for="pullDays">Pull days</label>
+          <input type="number" id="pullDays" min="0" max="365" inputmode="numeric">
+          <p class="date-hint">Days before the printed date it comes off a location's shelf. 0 pulls on the date; milk is 1.</p>
+          <label for="leadDays">Lead days</label>
+          <input type="number" id="leadDays" min="0" max="365" inputmode="numeric">
+          <p class="date-hint">Days before its date that basement stock should ship or be donated. Usually 14.</p>
+          <button type="button" class="btn btn-secondary" id="dateSettingsBtn" onclick="saveDateSettings()" style="margin-top:10px;">Save date settings</button>
+        </details>
+
         <!-- Retire and Reactivate: only in the detail view opened from the product list, never a scan result (PRD-003 Behavior 5) -->
         <div id="retireControls" class="hidden">
           <button id="retireBtn" class="btn btn-secondary" onclick="showRetireSection()" style="margin-top:10px;">Retire</button>
@@ -522,7 +574,12 @@
         retiredAt: p.retired_at || null,
         replacedByUpc: p.replaced_by_upc || null,
         replacedByName: p.replaced_by_name || null,
-        replacedByRetired: p.replaced_by_retired === true
+        replacedByRetired: p.replaced_by_retired === true,
+        // PRD-006 date fields from Get Product. A missing field reads as tracked with the defaults, never as switched off.
+        noDateNeeded: p.no_date_needed === true,
+        pullDays: Number.isInteger(p.pull_days) ? p.pull_days : 0,
+        leadDays: Number.isInteger(p.basement_lead_days) ? p.basement_lead_days : 14,
+        openDates: Array.isArray(p.open_dates) ? p.open_dates : []
       };
     }
 
@@ -796,6 +853,8 @@
       document.getElementById('outLocation').value = '';
       hideProductMessage();
       renderRetiredState(product);
+      hideDateOffer();
+      renderDates(product);
       document.getElementById('productPanel').classList.remove('hidden');
       document.getElementById('newProductPanel').classList.add('hidden');
     }
@@ -933,6 +992,7 @@
               }
             }
             loadRecentActivity();
+            if (type === 'IN') offerDate();
           } else {
             playErrorBuzz();
             showProductMessage(errorMessage(result, 'Transaction failed'), 'error');
@@ -1021,6 +1081,7 @@
     }
     
     function resetScan() {
+      hideDateOffer();
       document.getElementById('productPanel').classList.add('hidden');
       document.getElementById('newProductPanel').classList.add('hidden');
       document.getElementById('locationSection').classList.add('hidden');
@@ -1187,6 +1248,241 @@
     // ============================================
     // RETIRE AND REACTIVATE (PRD-003)
     // ============================================
+
+    // ============================================
+    // DATES (PRD-006). Every change goes through Dated Stock — Write; the page never ends a date by itself.
+    // ============================================
+    var DATE_WRITE = '/dated-stock/write';
+    var BASEMENT = 'Basement';
+    var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    var DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    var dateBusy = false;
+
+    // "2026-11-28" -> "Sat Nov 28, 2026". Dates always show the year (PRD rule).
+    function showDate(iso) {
+      var d = new Date(iso + 'T00:00:00Z');
+      return DAYS[d.getUTCDay()] + ' ' + MONTHS[d.getUTCMonth()] + ' ' + d.getUTCDate() + ', ' + d.getUTCFullYear();
+    }
+    function todayIso() {
+      var d = new Date();
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+    function isTracked(product) {
+      return !!product && !product.retiredAt && !product.noDateNeeded;
+    }
+
+    // One row's fields as "YYYY-MM-DD", '' when blank, or null when filled in but not a real date.
+    // The year is never filled in for the person (PRD rule: typed entry asks for month, day and year).
+    function rowDate(row) {
+      var m = row.querySelector('.date-month').value;
+      var d = row.querySelector('.date-day').value.trim();
+      var y = row.querySelector('.date-year').value.trim();
+      if (!m && !d && !y) return '';
+      if (!m || !/^[0-9]{1,2}$/.test(d) || !/^[0-9]{4}$/.test(y)) return null;
+      var iso = y + '-' + m + '-' + String(Number(d)).padStart(2, '0');
+      var check = new Date(iso + 'T00:00:00Z');
+      if (Number(y) < 2000 || Number(y) > 2099 || isNaN(check) || check.toISOString().slice(0, 10) !== iso) return null;
+      return iso;
+    }
+    function updateReadback(row) {
+      var out = row.querySelector('.date-readback');
+      var iso = rowDate(row);
+      if (iso === '') { out.textContent = 'Month, day and year, as printed'; out.className = 'date-readback blank'; return; }
+      if (iso === null) { out.textContent = 'Not a full date yet'; out.className = 'date-readback blank'; return; }
+      var past = iso < todayIso();
+      out.textContent = showDate(iso) + (past ? ' · Already expired' : '');
+      out.className = 'date-readback' + (past ? ' warn' : '');
+    }
+    function addDateRow() {
+      var rows = document.getElementById('dateRows');
+      var row = document.createElement('div');
+      row.className = 'date-row';
+      var opts = '<option value="">Month</option>';
+      for (var i = 0; i < 12; i++) opts += '<option value="' + String(i + 1).padStart(2, '0') + '">' + MONTHS[i] + '</option>';
+      row.innerHTML =
+        '<div class="date-fields">' +
+          '<label class="date-month-label">Month<select class="date-month">' + opts + '</select></label>' +
+          '<label>Day<input class="date-day" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" autocomplete="off"></label>' +
+          '<label>Year<input class="date-year" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off"></label>' +
+        '</div>' +
+        '<div class="date-readback blank"></div>' +
+        (rows.children.length ? '<button type="button" class="date-row-remove">Remove this date</button>' : '');
+      row.addEventListener('input', function() { updateReadback(row); });
+      row.addEventListener('change', function() { updateReadback(row); });
+      var remove = row.querySelector('.date-row-remove');
+      if (remove) remove.onclick = function() { row.remove(); updateSaveLabel(); };
+      rows.appendChild(row);
+      updateReadback(row);
+      updateSaveLabel();
+    }
+    function updateSaveLabel() {
+      var n = document.querySelectorAll('#dateRows .date-row').length;
+      document.getElementById('dateSaveBtn').textContent = n > 1 ? 'Save ' + n + ' dates' : 'Save date';
+    }
+    function offerDate() {
+      if (!isTracked(currentProduct)) return;
+      document.getElementById('dateRows').innerHTML = '';
+      addDateRow();
+      setDateBusy(false);
+      document.getElementById('dateOffer').classList.remove('hidden');
+    }
+    function hideDateOffer() {
+      document.getElementById('dateOffer').classList.add('hidden');
+      document.getElementById('dateRows').innerHTML = '';
+    }
+    function setDateBusy(busy, label) {
+      dateBusy = busy;
+      ['dateSaveBtn', 'dateSkipBtn'].forEach(function(id) { document.getElementById(id).disabled = busy; });
+      if (busy && label) document.getElementById('dateSaveBtn').textContent = label;
+      if (!busy) updateSaveLabel();
+    }
+
+    function saveDates() {
+      if (dateBusy || !currentProduct) return;
+      var rows = document.querySelectorAll('#dateRows .date-row');
+      var dates = [], seen = {};
+      for (var i = 0; i < rows.length; i++) {
+        var iso = rowDate(rows[i]);
+        if (iso === '') continue;
+        if (iso === null) { showBanner('Nothing saved. Date ' + (i + 1) + ' isn\'t a full date: it needs the month, day and year.', 'error'); return; }
+        if (!seen[iso]) { seen[iso] = true; dates.push(iso); }
+      }
+      if (!dates.length) { showBanner('Nothing saved. Enter the date on the package, or tap Skip.', 'error'); return; }
+      var product = currentProduct;
+      var what = product.name + ', ' + dates.map(showDate).join('; ');
+      setDateBusy(true, 'Saving…');
+      apiPostJson(DATE_WRITE, {
+        action: 'add_dates', upc: product.upc, place: BASEMENT, offered_from: 'scan',
+        dates: dates.map(function(d) { return { date: d, source: 'typed' }; })
+      }).then(function(res) {
+        var b = res.body || {};
+        if (!res.ok || b.ok !== true) throw new Error(b.error || ('status ' + res.status));
+        var added = Array.isArray(b.added) ? b.added : [];
+        hideDateOffer();
+        if (added.length) showBanner('Saved: ' + product.name + ', ' + added.map(showDate).join('; ') +
+          (added.length < dates.length ? '. The rest were already on file.' : '.'), 'success');
+        else showBanner('Already on file: ' + what + '. Nothing added.', 'success');
+        refreshDates(product.upc);
+      }).catch(function(err) {
+        setDateBusy(false);
+        playErrorBuzz();
+        showBanner('Nothing saved. Couldn\'t save ' + what + '. (' + err.message + ')', 'error');
+      });
+    }
+
+    function skipDates() {
+      if (dateBusy || !currentProduct) return;
+      var product = currentProduct;
+      setDateBusy(true);
+      apiPostJson(DATE_WRITE, { action: 'add_dates', upc: product.upc, place: BASEMENT, offered_from: 'scan', dates: [], outcome: 'skipped' })
+        .then(function(res) {
+          var b = res.body || {};
+          if (!res.ok || b.ok !== true) throw new Error(b.error || ('status ' + res.status));
+          hideDateOffer();
+        }).catch(function(err) {
+          setDateBusy(false);
+          showBanner('Couldn\'t record the skip for ' + product.name + '. No date was saved either way. (' + err.message + ')', 'error');
+        });
+    }
+
+    // The basement dates on file, oldest first, each with Remove. Location dates are handled on the location's date screen.
+    function renderDates(product) {
+      var box = document.getElementById('datesOnFile');
+      var settings = document.getElementById('dateSettings');
+      settings.classList.toggle('hidden', !!product.retiredAt);
+      settings.open = false;
+      document.getElementById('noDateNeeded').checked = product.noDateNeeded;
+      document.getElementById('pullDays').value = product.pullDays;
+      document.getElementById('leadDays').value = product.leadDays;
+      var mine = product.openDates.filter(function(d) { return d.place === BASEMENT; })
+        .sort(function(a, b) { return a.expiry_date < b.expiry_date ? -1 : a.expiry_date > b.expiry_date ? 1 : a.id - b.id; });
+      if (!mine.length && product.noDateNeeded) {
+        box.innerHTML = '<div class="date-hint" style="margin:0">No date needed for this product.</div>';
+        box.classList.remove('hidden');
+        return;
+      }
+      if (!mine.length) { box.innerHTML = ''; box.classList.add('hidden'); return; }
+      var today = todayIso();
+      box.innerHTML = '<div class="dates-title">Basement dates on file</div>' + mine.map(function(d) {
+        return '<div class="date-line"><span>' + escapeHtml(showDate(d.expiry_date)) + (d.expiry_date < today ? ' · <b>Expired</b>' : '') + '</span>' +
+          '<button type="button" data-id="' + escapeHtml(d.id) + '" data-date="' + escapeHtml(d.expiry_date) + '">Remove</button></div>';
+      }).join('');
+      box.classList.remove('hidden');
+      Array.prototype.forEach.call(box.querySelectorAll('button[data-id]'), function(btn) {
+        btn.onclick = function() { removeDate(btn); };
+      });
+    }
+
+    function removeDate(btn) {
+      if (dateBusy || !currentProduct) return;
+      var product = currentProduct;
+      var label = showDate(btn.getAttribute('data-date'));
+      if (!confirm('Remove the basement date ' + label + ' for ' + product.name + '?')) return;
+      dateBusy = true;
+      btn.disabled = true;
+      btn.textContent = 'Removing…';
+      apiPostJson(DATE_WRITE, { action: 'remove_date', id: Number(btn.getAttribute('data-id')) })
+        .then(function(res) {
+          var b = res.body || {};
+          if (!res.ok || b.ok !== true) throw new Error(b.error || ('status ' + res.status));
+          dateBusy = false;
+          showBanner('Removed: ' + product.name + ', ' + label + '.', 'success');
+          refreshDates(product.upc);
+        }).catch(function(err) {
+          dateBusy = false;
+          btn.disabled = false;
+          btn.textContent = 'Remove';
+          showBanner('Nothing changed. Couldn\'t remove ' + label + ' for ' + product.name + '. (' + err.message + ')', 'error');
+        });
+    }
+
+    function saveDateSettings() {
+      if (dateBusy || !currentProduct) return;
+      var product = currentProduct;
+      var pull = document.getElementById('pullDays').value.trim();
+      var lead = document.getElementById('leadDays').value.trim();
+      var okDays = function(v) { return /^[0-9]{1,3}$/.test(v) && Number(v) <= 365; };
+      if (!okDays(pull) || !okDays(lead)) { showBanner('Nothing saved. Pull days and lead days are whole numbers from 0 to 365.', 'error'); return; }
+      var change = { action: 'set_product', upc: product.upc };
+      var noDate = document.getElementById('noDateNeeded').checked;
+      if (noDate !== product.noDateNeeded) change.no_date_needed = noDate;
+      if (Number(pull) !== product.pullDays) change.pull_days = Number(pull);
+      if (Number(lead) !== product.leadDays) change.basement_lead_days = Number(lead);
+      if (Object.keys(change).length === 2) { showBanner('Nothing to save: the date settings are unchanged.', 'success'); return; }
+      var btn = document.getElementById('dateSettingsBtn');
+      dateBusy = true;
+      btn.disabled = true;
+      btn.textContent = 'Saving…';
+      apiPostJson(DATE_WRITE, change).then(function(res) {
+        var b = res.body || {};
+        if (!res.ok || b.ok !== true) throw new Error(b.error || ('status ' + res.status));
+        dateBusy = false;
+        btn.disabled = false;
+        btn.textContent = 'Save date settings';
+        showBanner('Saved date settings for ' + product.name + '.', 'success');
+        refreshDates(product.upc);
+      }).catch(function(err) {
+        dateBusy = false;
+        btn.disabled = false;
+        btn.textContent = 'Save date settings';
+        showBanner('Nothing saved. Couldn\'t save the date settings for ' + product.name + '. (' + err.message + ')', 'error');
+      });
+    }
+
+    // After a date change, read the product again so the list shows what the server holds, with each date's id.
+    function refreshDates(upc) {
+      apiGetJson('/inventory/product', { upc: upc }).then(function(res) {
+        if (!res.ok || !currentProduct || currentProduct.upc !== upc) return;
+        var fresh = mapProduct(res.body);
+        currentProduct.noDateNeeded = fresh.noDateNeeded;
+        currentProduct.pullDays = fresh.pullDays;
+        currentProduct.leadDays = fresh.leadDays;
+        currentProduct.openDates = fresh.openDates;
+        renderDates(currentProduct);
+      }).catch(function() {
+        showProductMessage('Saved, but the date list couldn\'t refresh. Scan it again to see it.', 'warning');
+      });
+    }
 
     function showBanner(text, type, actions) {
       var el = document.getElementById('banner');
