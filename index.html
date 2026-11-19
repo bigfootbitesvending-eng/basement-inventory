@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Basement Inventory v3.4.0</title>
+  <title>Basement Inventory v3.4.1</title>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script src="session.js"></script>
   <style>
@@ -329,7 +329,7 @@
 <body>
   <div class="container">
     <a class="breadcrumb" href="/">← Operator Tools</a>
-    <h1>📦 Basement Inventory v3.4.0</h1>
+    <h1>📦 Basement Inventory v3.4.1</h1>
 
     <!-- Session-level messages (start/end session, camera errors) -->
     <div id="message" class="message hidden"></div>
@@ -1770,12 +1770,13 @@
         photoStatus(row, msg, notes.length || b.yearChosen ? 'warn' : 'ok');
         photoActs(row, [retakeButton(row)]);
       } else if (b.result === 'month_only') {
-        setField(row, '.date-year', b.year); setField(row, '.date-month', pad2(b.month)); setField(row, '.date-day', '');
+        // Only the month and year are printed: the day starts on the month's last day (Randy, 2026-11-19). The day isn't part
+        // of the read, so changing it still counts the read as accepted (d: null).
+        var lastDay = new Date(Date.UTC(Number(b.year), Number(b.month), 0)).getUTCDate();
+        setField(row, '.date-year', b.year); setField(row, '.date-month', pad2(b.month)); setField(row, '.date-day', String(lastDay));
         p.filled = { y: String(b.year), m: pad2(b.month), d: null };
-        row.querySelector('.date-day').classList.add('date-unclear');
-        photoStatus(row, 'Read: <b>' + escapeHtml(b.printed_text || '') + '</b>. Only the month and year are printed. Type the day you want to use, then Save.', 'warn');
+        photoStatus(row, 'Read: <b>' + escapeHtml(b.printed_text || '') + '</b>. Only the month and year are printed, so the day is the last of the month. Check it against the photo, then Save.', 'ok');
         photoActs(row, [retakeButton(row)]);
-        row.querySelector('.date-day').focus();
       } else if (b.result === 'ambiguous_order') {
         photoStatus(row, 'Read: <b>' + escapeHtml(b.printed_text || '') + '</b>. Which part is the month?', 'warn');
         var pick = function(month, day) { return function() {
