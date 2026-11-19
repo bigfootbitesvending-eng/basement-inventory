@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Basement Inventory v3.4.2</title>
+  <title>Basement Inventory v3.5.0</title>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script src="session.js"></script>
   <style>
@@ -253,11 +253,19 @@
     .date-line:first-of-type { border-top: none; }
     .date-line button { min-height: 44px; padding: 0 14px; border: 1px solid #b23b3b; border-radius: 6px; background: #fff; color: #b23b3b; font-weight: 600; cursor: pointer; }
     .date-line button:disabled { opacity: 0.5; }
+    /* PRD-006: dating at a location. Counts are the basement's, so the count controls hide there. */
+    body.at-location .count-only { display: none !important; }
+    .date-place { display: flex; flex-direction: column; gap: 6px; }
+    .date-place label { font-weight: 600; }
+    .date-place select { min-height: 44px; font-size: 16px; }
+    .date-place-note { padding: 8px 10px; border-radius: 6px; background: #fff4d6; color: #5a4300; font-weight: 600; }
+    .date-line .found-btns { display: flex; gap: 6px; flex-shrink: 0; }
+    .date-line button.none-there { border-color: #6b7280; color: #374151; }
     .date-settings summary { min-height: 44px; display: flex; align-items: center; font-weight: 600; cursor: pointer; }
     .date-settings label { margin-top: 10px; }
     .check-row { display: flex; align-items: center; gap: 10px; min-height: 44px; font-weight: 600; }
     .check-row input { width: 24px; height: 24px; margin: 0; }
-    /* PRD-006 photo dates (trial) */
+    /* PRD-006 photo dates */
     .date-photo-btn { margin-top: 8px; }
     .date-photo { margin-top: 8px; }
     .date-crop { display: block; width: 100%; max-height: 40vh; object-fit: contain; background: #222; border-radius: 6px; cursor: zoom-in; }
@@ -329,7 +337,7 @@
 <body>
   <div class="container">
     <a class="breadcrumb" href="/">← Operator Tools</a>
-    <h1>📦 Basement Inventory v3.4.2</h1>
+    <h1>📦 Basement Inventory v3.5.0</h1>
 
     <!-- Session-level messages (start/end session, camera errors) -->
     <div id="message" class="message hidden"></div>
@@ -347,6 +355,13 @@
     
     <!-- Scan Tab -->
     <div id="scanTab">
+
+      <!-- PRD-006: where dates are saved. Basement is receiving and counts; a location is dating stock on its shelf. -->
+      <div class="card date-place">
+        <label for="datePlace">Dating at</label>
+        <select id="datePlace" onchange="setDatePlace(this.value)"><option value="Basement">Basement</option></select>
+        <div id="datePlaceNote" class="date-place-note hidden"></div>
+      </div>
 
       <div class="card">
         <div class="scanner-container">
@@ -377,22 +392,22 @@
           <div id="productRetired" class="retired-note hidden"></div>
         </div>
         
-        <label>Quantity to add/remove:</label>
-        <div class="qty-buttons">
+        <label class="count-only">Quantity to add/remove:</label>
+        <div class="qty-buttons count-only">
           <button class="qty-btn" onclick="adjustQty(-1)">−</button>
           <div class="qty-display" id="qtyDisplay">1</div>
           <button class="qty-btn" onclick="adjustQty(1)">+</button>
         </div>
         
         <!-- Location picker: only shown for OUT when no session is active -->
-        <div id="locationSection" class="location-section hidden">
+        <div id="locationSection" class="location-section hidden count-only">
           <label>Location (for OUT):</label>
           <select id="outLocation">
             <option value="">Select location...</option>
           </select>
         </div>
         
-        <div class="action-buttons">
+        <div class="action-buttons count-only">
           <button class="btn btn-in" onclick="processIn()">IN</button>
           <button class="btn btn-out" onclick="showLocationAndProcessOut()">OUT</button>
         </div>
@@ -402,7 +417,7 @@
 
         <!-- PRD-006: the date offer, shown after an IN of a tracked product, or from Add a date. One save sends every date on the form. -->
         <div id="dateOffer" class="date-offer hidden">
-          <div class="date-offer-title">Date on the package</div>
+          <div class="date-offer-title" id="dateOfferTitle">Date on the package</div>
           <p class="date-hint">Bought several? Check for another date.</p>
           <div id="dateRows"></div>
           <button type="button" class="btn btn-secondary date-add" onclick="addDateRow()">+ Add another date</button>
@@ -415,13 +430,13 @@
         <!-- PRD-006: basement dates on file; only a person removes one -->
         <div id="datesOnFile" class="dates-on-file hidden"></div>
         
-        <div id="setQtySection" class="location-section hidden" style="background:#e8f4e8;">
+        <div id="setQtySection" class="location-section hidden count-only" style="background:#e8f4e8;">
           <label>Set quantity to:</label>
           <input type="number" id="setQtyInput" min="0" value="0">
           <button class="btn btn-in" onclick="confirmSetQty()" style="margin-top:10px;">Confirm</button>
         </div>
         
-        <button class="btn btn-secondary" onclick="showSetQty()" style="margin-top:10px;" id="setQtyBtn">
+        <button class="btn btn-secondary count-only" onclick="showSetQty()" style="margin-top:10px;" id="setQtyBtn">
           Set Qty
         </button>
         
@@ -756,6 +771,8 @@
       apiGetJson('/inventory/locations')
         .then(function(res) {
           locations = res.body.locations || [];
+          machines = res.body.machines && typeof res.body.machines === 'object' ? res.body.machines : {};
+          fillDatePlaces();
           var outSelect = document.getElementById('outLocation');
           outSelect.innerHTML = '<option value="">Select location...</option>';
           for (var i = 0; i < locations.length; i++) {
@@ -882,6 +899,7 @@
       renderRetiredState(product);
       hideDateOffer();
       renderDates(product);
+      if (atLocation() && isTracked(product)) openDateForm();   // dating is the only thing to do at a location
       document.getElementById('productPanel').classList.remove('hidden');
       document.getElementById('newProductPanel').classList.add('hidden');
     }
@@ -1281,6 +1299,41 @@
     // ============================================
     var DATE_WRITE = '/dated-stock/write';
     var BASEMENT = 'Basement';
+    // Where dates are saved: 'Basement' or a location's machine name (ADR-021: dated_stock.place holds machine names),
+    // and the name the person sees. Remembered for the rest of the day, so a reload at a location stays there.
+    var datePlace = BASEMENT, datePlaceName = 'Basement', machines = {};
+    var PLACE_KEY = 'bb.datePlace';
+    function atLocation() { return datePlace !== BASEMENT; }
+    function fillDatePlaces() {
+      var sel = document.getElementById('datePlace');
+      var names = getRealLocations().filter(function(n) { return typeof machines[n] === 'string' && machines[n]; })
+        .sort(function(a, b) { return a.localeCompare(b); });
+      sel.innerHTML = '<option value="' + BASEMENT + '">Basement</option>' + names.map(function(n) {
+        return '<option value="' + escapeHtml(machines[n]) + '">' + escapeHtml(n) + '</option>';
+      }).join('');
+      var saved = null;
+      try { saved = JSON.parse(localStorage.getItem(PLACE_KEY) || 'null'); } catch (e) { saved = null; }
+      setDatePlace(saved && saved.day === todayIso() ? saved.place : datePlace, true);
+    }
+    function setDatePlace(value, restoring) {
+      var sel = document.getElementById('datePlace');
+      var opt = Array.prototype.filter.call(sel.options, function(o) { return o.value === value; })[0] || sel.options[0];
+      sel.value = opt.value;
+      var changed = opt.value !== datePlace;
+      datePlace = opt.value; datePlaceName = opt.textContent;
+      if (!restoring) { try { localStorage.setItem(PLACE_KEY, JSON.stringify({ place: datePlace, day: todayIso() })); } catch (e) {} }
+      document.body.classList.toggle('at-location', atLocation());
+      var note = document.getElementById('datePlaceNote');
+      note.textContent = atLocation() ? 'Dates you save go to ' + datePlaceName + '. Basement counts don\'t change here.' : '';
+      note.classList.toggle('hidden', !atLocation());
+      document.getElementById('dateOfferTitle').textContent = 'Date on the package' + (atLocation() ? ' at ' + datePlaceName : '');
+      if (changed && currentProduct && currentProduct.openDates) {
+        // A form opened for the other place closes; a photo read on it is answered so it still reaches the review.
+        if (!document.getElementById('dateOffer').classList.contains('hidden')) { answerUnsavedReads(); hideDateOffer(); }
+        renderDates(currentProduct);
+        if (atLocation() && isTracked(currentProduct)) openDateForm();
+      }
+    }
     var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     var DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     var dateBusy = false;
@@ -1367,7 +1420,6 @@
       dateOfferSource = source === 'button' && !(dateOfferSource === 'in' && !offer.classList.contains('hidden')) ? 'button' : 'in';
       document.getElementById('dateSkipBtn').textContent = dateOfferSource === 'in' ? 'Skip' : 'Cancel';
       setDateBusy(false);
-      if (photoOn() && !document.getElementById('photoSwitchNote')) document.getElementById('dateRows').insertAdjacentHTML('beforebegin', photoSwitchNote());
       offer.classList.remove('hidden');
       document.getElementById('addDateBtn').classList.add('hidden');
     }
@@ -1406,16 +1458,17 @@
       var product = currentProduct;
       var what = product.name + ', ' + dates.map(showDate).join('; ');
       setDateBusy(true, 'Saving…');
-      var payload = { action: 'add_dates', upc: product.upc, place: BASEMENT, offered_from: 'scan', dates: entries };
+      var place = datePlace, placeName = datePlaceName;
+      var payload = { action: 'add_dates', upc: product.upc, place: place, offered_from: 'scan', dates: entries };
       if (printFormat) payload.print_format = printFormat;
       apiPostJson(DATE_WRITE, payload).then(function(res) {
         var b = res.body || {};
         if (!res.ok || b.ok !== true) throw new Error(b.error || ('status ' + res.status));
         var added = Array.isArray(b.added) ? b.added : [];
         hideDateOffer();
-        if (added.length) showBanner('Saved: ' + product.name + ', ' + added.map(showDate).join('; ') +
+        if (added.length) showBanner('Saved' + (place !== BASEMENT ? ' at ' + placeName : '') + ': ' + product.name + ', ' + added.map(showDate).join('; ') +
           (added.length < dates.length ? '. The rest were already on file.' : '.'), 'success');
-        else showBanner('Already on file: ' + what + '. Nothing added.', 'success');
+        else showBanner('Already on file' + (place !== BASEMENT ? ' at ' + placeName : '') + ': ' + what + '. Nothing added.', 'success');
         refreshDates(product.upc);
       }).catch(function(err) {
         setDateBusy(false);
@@ -1430,7 +1483,7 @@
       if (dateOfferSource !== 'in') { hideDateOffer(); return; }   // Cancel on "Add a date": not an offer, nothing to record
       var product = currentProduct;
       setDateBusy(true);
-      apiPostJson(DATE_WRITE, { action: 'add_dates', upc: product.upc, place: BASEMENT, offered_from: 'scan', dates: [], outcome: 'skipped' })
+      apiPostJson(DATE_WRITE, { action: 'add_dates', upc: product.upc, place: datePlace, offered_from: 'scan', dates: [], outcome: 'skipped' })
         .then(function(res) {
           var b = res.body || {};
           if (!res.ok || b.ok !== true) throw new Error(b.error || ('status ' + res.status));
@@ -1441,7 +1494,8 @@
         });
     }
 
-    // The basement dates on file, oldest first, each with Remove. Location dates are handled on the location's date screen.
+    // The chosen place's dates on file, oldest first. A basement date has Remove; a location date has "Pulled it" and
+    // "None there" (PRD-006: a location date is marked found, never removed).
     function renderDates(product) {
       var box = document.getElementById('datesOnFile');
       var settings = document.getElementById('dateSettings');
@@ -1451,7 +1505,7 @@
       document.getElementById('noDateNeeded').checked = product.noDateNeeded;
       document.getElementById('pullDays').value = product.pullDays;
       document.getElementById('leadDays').value = product.leadDays;
-      var mine = product.openDates.filter(function(d) { return d.place === BASEMENT; })
+      var mine = product.openDates.filter(function(d) { return d.place === datePlace; })
         .sort(function(a, b) { return a.expiry_date < b.expiry_date ? -1 : a.expiry_date > b.expiry_date ? 1 : a.id - b.id; });
       if (!mine.length && product.noDateNeeded) {
         box.innerHTML = '<div class="date-hint" style="margin:0">No date needed for this product.</div>';
@@ -1460,13 +1514,17 @@
       }
       if (!mine.length) { box.innerHTML = ''; box.classList.add('hidden'); return; }
       var today = todayIso();
-      box.innerHTML = '<div class="dates-title">Basement dates on file</div>' + mine.map(function(d) {
+      var here = atLocation();
+      box.innerHTML = '<div class="dates-title">' + escapeHtml(datePlaceName) + ' dates on file</div>' + mine.map(function(d) {
+        var at = ' data-id="' + escapeHtml(d.id) + '" data-date="' + escapeHtml(d.expiry_date) + '"';
         return '<div class="date-line"><span>' + escapeHtml(showDate(d.expiry_date)) + (d.expiry_date < today ? ' · <b>Expired</b>' : '') + '</span>' +
-          '<button type="button" data-id="' + escapeHtml(d.id) + '" data-date="' + escapeHtml(d.expiry_date) + '">Remove</button></div>';
+          (here ? '<span class="found-btns"><button type="button"' + at + ' data-found="pulled">Pulled it</button>' +
+                  '<button type="button" class="none-there"' + at + ' data-found="none_there">None there</button></span>'
+                : '<button type="button"' + at + '>Remove</button>') + '</div>';
       }).join('');
       box.classList.remove('hidden');
       Array.prototype.forEach.call(box.querySelectorAll('button[data-id]'), function(btn) {
-        btn.onclick = function() { removeDate(btn); };
+        btn.onclick = function() { if (btn.getAttribute('data-found')) markFound(btn); else removeDate(btn); };
       });
     }
 
@@ -1490,6 +1548,35 @@
           btn.disabled = false;
           btn.textContent = 'Remove';
           showBanner('Nothing changed. Couldn\'t remove ' + label + ' for ' + product.name + '. (' + err.message + ')', 'error');
+        });
+    }
+
+    // A location date found on the shelf and pulled, or not there at all. The server files a pull as expired or near date.
+    function markFound(btn) {
+      if (dateBusy || !currentProduct) return;
+      var product = currentProduct, placeName = datePlaceName;
+      var found = btn.getAttribute('data-found');
+      var label = showDate(btn.getAttribute('data-date'));
+      var ask = found === 'pulled' ? 'Pulled ' + product.name + ', ' + label + ', off the shelf at ' + placeName + '?'
+                                   : 'None of ' + product.name + ', ' + label + ', on the shelf at ' + placeName + '?';
+      if (!confirm(ask)) return;
+      dateBusy = true;
+      var both = btn.parentNode.querySelectorAll('button');
+      Array.prototype.forEach.call(both, function(b) { b.disabled = true; });
+      btn.textContent = 'Saving…';
+      apiPostJson(DATE_WRITE, { action: 'mark_found', id: Number(btn.getAttribute('data-id')), found: found })
+        .then(function(res) {
+          var b = res.body || {};
+          if (!res.ok || b.ok !== true) throw new Error(b.error || ('status ' + res.status));
+          dateBusy = false;
+          var filed = b.end_kind === 'expired' ? ' Filed as expired.' : b.end_kind === 'near_date' ? ' Filed as pulled before its date.' : '';
+          showBanner((found === 'pulled' ? 'Pulled: ' : 'None there: ') + product.name + ', ' + label + ', at ' + placeName + '.' + filed, 'success');
+          refreshDates(product.upc);
+        }).catch(function(err) {
+          dateBusy = false;
+          Array.prototype.forEach.call(both, function(b) { b.disabled = false; });
+          btn.textContent = found === 'pulled' ? 'Pulled it' : 'None there';
+          showBanner('Nothing changed. Couldn\'t mark ' + label + ' for ' + product.name + '. (' + err.message + ')', 'error');
         });
     }
 
@@ -1527,7 +1614,8 @@
     }
 
     // ============================================
-    // PHOTO DATES (PRD-006, trial). Behind a switch kept in this browser only: open the page once with ?photo=on (or ?photo=off).
+    // PHOTO DATES (PRD-006). On for everyone (Randy, 2026-11-19, after the first basement run). Opening the page once with
+    // ?photo=off turns them off in that browser only, and ?photo=on turns them back on.
     // The camera shows a guide box; only the box and a small margin are sent to Dated Stock — Photo Read. The read fills the
     // row's month, day and year for the person to check against the crop; nothing saves until they tap Save.
     // ============================================
@@ -1540,17 +1628,12 @@
     (function setPhotoSwitchFromUrl() {
       try {
         var v = new URLSearchParams(window.location.search).get('photo');
-        if (v === 'on') localStorage.setItem(PHOTO_KEY, 'on');
-        if (v === 'off') localStorage.removeItem(PHOTO_KEY);
-      } catch (e) { /* storage blocked: the switch stays off */ }
+        if (v === 'on') localStorage.removeItem(PHOTO_KEY);
+        if (v === 'off') localStorage.setItem(PHOTO_KEY, 'off');
+      } catch (e) { /* storage blocked: photo dates stay on */ }
     })();
     function photoOn() {
-      try { return localStorage.getItem(PHOTO_KEY) === 'on'; } catch (e) { return false; }
-    }
-    function turnPhotoOff() {
-      try { localStorage.removeItem(PHOTO_KEY); } catch (e) { /* nothing to undo */ }
-      Array.prototype.forEach.call(document.querySelectorAll('.date-photo-btn, #photoSwitchNote'), function(el) { el.remove(); });
-      showBanner('Photo dates are off on this phone. Typed entry only.', 'success');
+      try { return localStorage.getItem(PHOTO_KEY) !== 'off'; } catch (e) { return true; }
     }
 
     // The photo parts of one date row, added by addDateRow when the switch is on.
@@ -1565,9 +1648,6 @@
       if (btn) btn.onclick = function() { openCamera(row); };
       var img = row.querySelector('.date-crop');
       if (img) img.onclick = function() { if (row.__photo && row.__photo.full) showFullPhoto(row.__photo.full); };
-    }
-    function photoSwitchNote() {
-      return '<p class="date-hint" id="photoSwitchNote">Photo dates are on for this phone (trial). <a href="#" onclick="turnPhotoOff(); return false;">Turn off</a></p>';
     }
 
     // ---- Camera
@@ -1710,7 +1790,7 @@
       photoStatus(row, '<span class="spin" aria-hidden="true"></span>Reading the date…');
       var left = READ_LIMIT_MS - (Date.now() - started);
       var timer = new Promise(function(res) { setTimeout(function() { res({ timedOut: true }); }, Math.max(0, left)); });
-      var call = apiPostJson(PHOTO_READ, { upc: currentProduct.upc, place: BASEMENT, crop: url.split(',')[1], crop_type: 'image/jpeg', turned: p.turned });
+      var call = apiPostJson(PHOTO_READ, { upc: currentProduct.upc, place: datePlace, crop: url.split(',')[1], crop_type: 'image/jpeg', turned: p.turned });
       Promise.race([call, timer]).then(function(res) {
         if (row.__photo !== p || p.attempt !== token) return;   // a newer photo or read took over
         if (res.timedOut) { readFailed(row, 'Took too long to read. Type the date instead.', false); return; }
