@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Basement Inventory v3.5.1</title>
+  <title>Basement Inventory v3.5.3</title>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script src="session.js"></script>
   <style>
@@ -359,7 +359,7 @@
 <body>
   <div class="container">
     <a class="breadcrumb" href="/">← Operator Tools</a>
-    <h1>📦 Basement Inventory v3.5.1</h1>
+    <h1>📦 Basement Inventory v3.5.3</h1>
 
     <!-- Session-level messages (start/end session, camera errors) -->
     <div id="message" class="message hidden"></div>
@@ -1360,10 +1360,15 @@
       sel.innerHTML = '<option value="' + BASEMENT + '">Basement</option>' + names.map(function(n) {
         return '<option value="' + escapeHtml(machines[n]) + '">' + escapeHtml(n) + '</option>';
       }).join('');
+      // A "Mark what you found" link from the restock email names the machine (?place=): it wins once, and is kept for the day.
+      var linked = placeLinkUsed ? null : new URLSearchParams(window.location.search).get('place');
+      placeLinkUsed = true;
+      if (linked) { setDatePlace(linked); return; }   // an unknown place falls back to Basement
       var saved = null;
       try { saved = JSON.parse(localStorage.getItem(PLACE_KEY) || 'null'); } catch (e) { saved = null; }
       setDatePlace(saved && saved.day === todayIso() ? saved.place : datePlace, true);
     }
+    var placeLinkUsed = false;
     function setDatePlace(value, restoring) {
       var sel = document.getElementById('datePlace');
       var opt = Array.prototype.filter.call(sel.options, function(o) { return o.value === value; })[0] || sel.options[0];
@@ -1498,9 +1503,14 @@
         seen[iso] = true; dates.push(iso);
         var entry = photoEntry(rows[i], iso);
         entries.push(entry);
-        // The product remembers how it prints its date only from a read the person accepted (PRD Behavior 11).
+        // The product remembers how it prints its date only from a read the person accepted (PRD Behavior 11), or (BUG-093)
+        // a no-year read the page refused where the person typed exactly the date the year would have been chosen as: the
+        // print really has no year (milk). A typed date in another year means the print had one, so nothing is learned.
         var pr = rows[i].__photo && rows[i].__photo.response;
-        if (!printFormat && entry.answer === 'accepted' && pr && pr.print_format) printFormat = pr.print_format;
+        if (!printFormat && pr && pr.print_format) {
+          if (entry.answer === 'accepted') printFormat = pr.print_format;
+          else if (entry.answer === 'typed' && pr.result === 'reject' && pr.no_year && pr.no_year.date === iso && pr.print_format.year_missing === true) printFormat = pr.print_format;
+        }
       }
       if (!dates.length) { showBanner('Nothing saved. Enter the date on the package, or tap ' + (dateOfferSource === 'in' ? 'Skip' : 'Cancel') + '.', 'error'); return; }
       var product = currentProduct;
