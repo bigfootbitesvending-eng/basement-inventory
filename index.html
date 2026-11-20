@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Basement Inventory v3.5.3</title>
+  <title>Basement Inventory v3.5.4</title>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script src="session.js"></script>
   <style>
@@ -359,7 +359,7 @@
 <body>
   <div class="container">
     <a class="breadcrumb" href="/">← Operator Tools</a>
-    <h1>📦 Basement Inventory v3.5.3</h1>
+    <h1>📦 Basement Inventory v3.5.4</h1>
 
     <!-- Session-level messages (start/end session, camera errors) -->
     <div id="message" class="message hidden"></div>
@@ -1887,7 +1887,7 @@
         if (res.status === 429 || b.code === 'daily_cap') { readFailed(row, escapeHtml(b.error || 'Photo reads are done for today.') , false); return; }
         if (!res.ok || b.ok !== true) { readFailed(row, 'Couldn\'t read the date. Nothing saved. <i>(' + escapeHtml(b.error || ('status ' + res.status)) + ')</i>', true); return; }
         p.review_id = b.review_id || null;
-        p.response = b;
+        p.response = b; p.readings = null;
         // A turned read: turn the crop the way it says and read again; a quarter turn that stays turned tries the other quarter once.
         if (b.result === 'no_date' && b.reason === 'turned' && b.turn) {
           var delta = { clockwise: 90, counterclockwise: 270, half: 180 }[b.turn];
@@ -1954,17 +1954,20 @@
         var yearAt = function(s) { return s === String(b.year) || s === String(b.year).slice(2); };
         var yearLast = nums.length >= 3 && yearAt(nums[nums.length - 1]), yearFirst = !yearLast && nums.length >= 3 && yearAt(nums[nums.length - 3]);
         var orderFor = function(aIsMonth) { return yearLast ? (aIsMonth ? 'MDY' : 'DMY') : yearFirst && aIsMonth ? 'YMD' : null; };
-        var pick = function(month, day, aIsMonth) { return function() {
+        // Both readings, so Save can tell a date the person typed or edited to is one of them (photoEntry).
+        p.filled = null;
+        p.readings = [{ iso: b.year + '-' + pad2(b.a) + '-' + pad2(b.b), order: orderFor(true) },
+                      { iso: b.year + '-' + pad2(b.b) + '-' + pad2(b.a), order: orderFor(false) }];
+        // A tap only fills the fields; Save decides from the date saved which reading it was (photoEntry).
+        var pick = function(month, day) { return function() {
           setField(row, '.date-year', b.year); setField(row, '.date-month', pad2(month)); setField(row, '.date-day', String(day));
           p.filled = { y: String(b.year), m: pad2(month), d: String(day) };
-          var order = orderFor(aIsMonth);
-          if (p.response) p.response.print_format = order ? { order: order, year_missing: false, sideways: p.turned !== 0 } : null;
           photoStatus(row, 'Check it against the photo, then Save.', 'ok');
           photoActs(row, [retakeButton(row)]); updateReadback(row);
         }; };
         // The earlier date first, marked as the safer pick: pulling early costs less than selling late.
         var aFirst = Date.UTC(b.year, b.a - 1, b.b) <= Date.UTC(b.year, b.b - 1, b.a);
-        var asMonthA = { label: MONTHS[b.a - 1] + ' ' + b.b, run: pick(b.a, b.b, true) }, asMonthB = { label: MONTHS[b.b - 1] + ' ' + b.a, run: pick(b.b, b.a, false) };
+        var asMonthA = { label: MONTHS[b.a - 1] + ' ' + b.b, run: pick(b.a, b.b) }, asMonthB = { label: MONTHS[b.b - 1] + ' ' + b.a, run: pick(b.b, b.a) };
         var earlier = aFirst ? asMonthA : asMonthB, later = aFirst ? asMonthB : asMonthA;
         earlier.label += ' (earlier, safer)';
         photoActs(row, [earlier, later, retakeButton(row)]);
@@ -1983,6 +1986,14 @@
     function photoEntry(row, iso) {
       var p = row.__photo;
       if (!p || !p.review_id) return { date: iso, source: 'typed' };
+      // "Which is the month?": a saved date that is exactly one of the two readings answers the question, however it got
+      // into the fields (a tap, a tap then an edit to the other reading, or typed with no tap). It is accepted, and the
+      // product keeps that reading's order (BUG-091; Randy, 2026-11-20, Quest at Livano). Any other date is a correction.
+      var reading = (p.readings || []).filter(function(r) { return r.iso === iso; })[0];
+      if (reading) {
+        if (p.response) p.response.print_format = reading.order ? { order: reading.order, year_missing: false, sideways: p.turned !== 0 } : null;
+        return { date: iso, source: 'photo', review_id: p.review_id, answer: 'accepted' };
+      }
       var crop = cropJpeg(p).split(',')[1];
       if (!p.filled) return { date: iso, source: 'typed', review_id: p.review_id, answer: 'typed', crop: crop, crop_type: 'image/jpeg' };
       var parts = iso.split('-');
