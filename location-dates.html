@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Location Dates v1.0.0</title>
+  <title>Location Dates v1.0.1</title>
   <!-- BUG-059: the pinned file's hash, so a changed file from the CDN is refused -->
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" integrity="sha384-c9d8RFSL+u3exBOJ4Yp3HUJXS4znl9f+z66d1y54ig+ea249SpqR+w1wyvXz/lk+" crossorigin="anonymous"></script>
   <!-- The date form, photo dates and dates on file, shared with Basement Inventory (PRD-006 item 4) -->
-  <script src="dates.js?v=3.6.1"></script>
+  <script src="dates.js?v=3.6.2"></script>
   <style>
     /* Location Dates (PRD-006 item 4, step 1): dating stock on a location's shelf, on its own page (Randy, 2026-11-21:
        "Why am I seeing the basement inventory screen?"). The date styles match Basement Inventory's. */
@@ -116,7 +116,7 @@
 <body>
   <div class="container">
     <a class="breadcrumb" href="/">← Operator Tools</a>
-    <h1>📍 Location Dates v1.0.0</h1>
+    <h1>📍 Location Dates v1.0.1</h1>
 
     <div id="message" class="message hidden"></div>
     <div id="banner" class="message hidden" role="status"></div>
@@ -125,9 +125,9 @@
     <div class="card">
       <div class="place-row">
         <label for="datePlace">Location</label>
-        <select id="datePlace" onchange="choosePlace(this.value)"><option value="">Choose a location…</option></select>
+        <select id="datePlace" onchange="choosePlace(this.value)" disabled><option value="">Loading locations…</option></select>
       </div>
-      <p class="place-note" id="placeNote">Choose the location whose shelf you're dating.</p>
+      <p class="place-note" id="placeNote"><span class="spin" aria-hidden="true"></span>Loading locations…</p>
     </div>
 
     <!-- Scan a product to date it, or to mark a date found -->
@@ -244,11 +244,14 @@
     // ---- The location
     function loadLocations() {
       apiGetJson('/inventory/locations').then(function(res) {
+        if (!res.ok) throw new Error('status ' + res.status);
         var all = (res.body && res.body.locations) || [];
         machines = res.body && res.body.machines && typeof res.body.machines === 'object' ? res.body.machines : {};
         var cut = all.indexOf('---'), real = cut === -1 ? all : all.slice(0, cut);
         var names = real.filter(function(n) { return typeof machines[n] === 'string' && machines[n]; }).sort(function(a, b) { return a.localeCompare(b); });
         var sel = document.getElementById('datePlace');
+        sel.disabled = false;
+        showPlaceNote('Choose the location whose shelf you\'re dating.');
         sel.innerHTML = '<option value="">Choose a location…</option>' + names.map(function(n) {
           return '<option value="' + escapeHtml(machines[n]) + '">' + escapeHtml(n) + '</option>';
         }).join('');
@@ -258,7 +261,11 @@
         if (linked) {
           if (!choosePlace(linked)) showPlaceNote('The link named a location that isn\'t active (' + linked + '). Choose one.', true);
         } else if (saved && saved.day === todayIso()) choosePlace(saved.place, true);
-      }).catch(function(err) { showBanner('Couldn\'t load the locations. Reload the page. (' + err.message + ')', 'error'); });
+      }).catch(function(err) {
+        document.getElementById('datePlace').innerHTML = '<option value="">Couldn\'t load locations</option>';
+        showPlaceNote('Couldn\'t load the locations. Reload the page to try again.', true);
+        showBanner('Couldn\'t load the locations. Reload the page. (' + err.message + ')', 'error');
+      });
     }
     function showPlaceNote(text, warn) { var n = document.getElementById('placeNote'); n.textContent = text; n.className = 'place-note' + (warn ? ' warn' : ''); }
     // Returns false for a value that isn't an active location's machine.

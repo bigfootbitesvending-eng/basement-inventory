@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Basement Inventory v3.6.1</title>
+  <title>Basement Inventory v3.6.2</title>
   <!-- BUG-059: the pinned file's hash, so a changed file from the CDN is refused (same hash on unpkg and jsDelivr, 2026-11-21) -->
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" integrity="sha384-c9d8RFSL+u3exBOJ4Yp3HUJXS4znl9f+z66d1y54ig+ea249SpqR+w1wyvXz/lk+" crossorigin="anonymous"></script>
   <script src="session.js"></script>
-  <script src="dates.js?v=3.6.1"></script>
+  <script src="dates.js?v=3.6.2"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     
@@ -370,7 +370,7 @@
 <body>
   <div class="container">
     <a class="breadcrumb" href="/">← Operator Tools</a>
-    <h1>📦 Basement Inventory v3.6.1</h1>
+    <h1>📦 Basement Inventory v3.6.2</h1>
 
     <!-- Session-level messages (start/end session, camera errors) -->
     <div id="message" class="message hidden"></div>
@@ -451,8 +451,8 @@
         <!-- Location picker: only shown for OUT when no session is active -->
         <div id="locationSection" class="location-section hidden count-only">
           <label>Location (for OUT):</label>
-          <select id="outLocation" onchange="renderOutDates()">
-            <option value="">Select location...</option>
+          <select id="outLocation" onchange="renderOutDates()" disabled>
+            <option value="">Loading locations…</option>
           </select>
         </div>
 
@@ -777,6 +777,13 @@
     function populateSessionDropdown() {
       var select = document.getElementById('sessionLocation');
       if (!select) return;
+      // Loading shows right away, before the locations arrive (style guide, Messages and states).
+      if (!locationsLoaded) {
+        select.innerHTML = '<option value="">' + (locationsFailed ? 'Couldn\'t load locations' : 'Loading locations…') + '</option>';
+        select.disabled = true;
+        return;
+      }
+      select.disabled = false;
       select.innerHTML = '<option value="">Select destination location...</option>';
       var realLocations = getRealLocations();
       for (var i = 0; i < realLocations.length; i++) {
@@ -820,13 +827,17 @@
       return idx === -1 ? locations.slice() : locations.slice(0, idx);
     }
     
+    var locationsLoaded = false, locationsFailed = false;
     function loadLocations() {
       apiGetJson('/inventory/locations')
         .then(function(res) {
+          if (!res.ok) throw new Error('status ' + res.status);
           locations = res.body.locations || [];
+          locationsLoaded = true;
           machines = res.body.machines && typeof res.body.machines === 'object' ? res.body.machines : {};
           fillDatePlaces();
           var outSelect = document.getElementById('outLocation');
+          outSelect.disabled = false;
           outSelect.innerHTML = '<option value="">Select location...</option>';
           for (var i = 0; i < locations.length; i++) {
             var loc = locations[i];
@@ -844,7 +855,11 @@
           populateSessionDropdown();
         })
         .catch(function(err) {
-          console.log('Error loading locations: ' + err);
+          // A failed load says so; the lists stay off instead of looking empty.
+          locationsFailed = true;
+          populateSessionDropdown();
+          document.getElementById('outLocation').innerHTML = '<option value="">Couldn\'t load locations</option>';
+          showMessage('Couldn\'t load the locations. Reload the page to try again. (' + err.message + ')', 'error');
         });
     }
     
