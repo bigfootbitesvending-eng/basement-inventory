@@ -3,8 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Basement Inventory v3.5.4</title>
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <title>Basement Inventory v3.6.0</title>
+  <!-- BUG-059: the pinned file's hash, so a changed file from the CDN is refused (same hash on unpkg and jsDelivr, 2026-11-21) -->
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" integrity="sha384-c9d8RFSL+u3exBOJ4Yp3HUJXS4znl9f+z66d1y54ig+ea249SpqR+w1wyvXz/lk+" crossorigin="anonymous"></script>
   <script src="session.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -228,6 +229,15 @@
     /* Retire a product (PRD-003) */
     #banner { position: sticky; top: 0; z-index: 10; }
     .message.warning { background: #fff3cd; color: #664d03; }
+    /* PRD-006 Behavior 5: basement dates going out with an OUT, ticked like the pick list's */
+    .out-dates { margin: 4px 0 12px; padding: 10px 12px; border-radius: 8px; background: #eef3fb; }
+    .carry-title { font-size: 0.88rem; font-weight: 600; color: #333; margin-bottom: 8px; }
+    .carry-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .carry-chip { min-height: 44px; padding: 0 14px; border: 2px solid #4472C4; border-radius: 22px; background: #fff; color: #4472C4; font-size: 0.9rem; font-weight: 600; cursor: pointer; }
+    .carry-chip[aria-pressed="true"] { background: #4472C4; color: #fff; }
+    .carry-chip:focus-visible { outline: 2px solid #333; outline-offset: 2px; }
+    .carry-one { font-size: 0.9rem; font-weight: 600; color: #333; }
+    .carry-hint { font-size: 0.8rem; color: #555; margin-top: 6px; }
     .banner-actions { display: flex; gap: 10px; justify-content: center; margin-top: 10px; }
     .banner-actions button { min-height: 44px; padding: 8px 14px; border: 1px solid currentColor; border-radius: 6px; background: #fff; color: inherit; font-weight: 600; cursor: pointer; }
     .retired-marker { display: inline-block; padding: 2px 8px; border: 1px solid #555; border-radius: 4px; font-size: 0.8rem; font-weight: 700; color: #333; }
@@ -359,7 +369,7 @@
 <body>
   <div class="container">
     <a class="breadcrumb" href="/">← Operator Tools</a>
-    <h1>📦 Basement Inventory v3.5.4</h1>
+    <h1>📦 Basement Inventory v3.6.0</h1>
 
     <!-- Session-level messages (start/end session, camera errors) -->
     <div id="message" class="message hidden"></div>
@@ -440,10 +450,13 @@
         <!-- Location picker: only shown for OUT when no session is active -->
         <div id="locationSection" class="location-section hidden count-only">
           <label>Location (for OUT):</label>
-          <select id="outLocation">
+          <select id="outLocation" onchange="renderOutDates()">
             <option value="">Select location...</option>
           </select>
         </div>
+
+        <!-- PRD-006: basement dates that leave with an OUT to a location (carried there) or to Expired (ended) -->
+        <div id="outDates" class="out-dates hidden count-only"></div>
 
         <div class="action-buttons count-only">
           <button class="btn btn-in" onclick="processIn()">IN</button>
@@ -757,6 +770,7 @@
           '</div>';
         populateSessionDropdown();
       }
+      renderOutDates();   // a session changes where an OUT goes
     }
 
     function populateSessionDropdown() {
@@ -937,6 +951,8 @@
       renderRetiredState(product);
       hideDateOffer();
       renderDates(product);
+      outTicksUpc = null;   // a product opened fresh starts with its oldest date ticked
+      renderOutDates();
       if (atLocation() && isTracked(product)) openDateForm();   // dating is the only thing to do at a location
       document.getElementById('backToListBtn').classList.toggle('hidden', !detailView);
       document.getElementById('productPanel').classList.remove('hidden');
@@ -1036,6 +1052,7 @@
       var locationSection = document.getElementById('locationSection');
       if (locationSection.classList.contains('hidden')) {
         locationSection.classList.remove('hidden');
+        renderOutDates();
         return;
       }
       var location = document.getElementById('outLocation').value;
@@ -1046,8 +1063,93 @@
       processTransaction('OUT', location);
     }
     
+    // ---- PRD-006 Behavior 5, second path: basement dates go out with an OUT (item 6) ----
+    // To a location: the ticked dates move to its shelf (Dated Stock — Write carry, under the machine name, ADR-021).
+    // To Expired: the ticked dates end, filed expired or near date by the server. Damaged and Personal Use ask nothing:
+    // a unit or two rarely empties a date (Randy, 2026-11-21). Oldest ticked; one date goes without a tap, as on the pick list.
+    var outTicks = [], outTicksUpc = null;
+    function outBasementDates(product) {
+      if (!product || product.noDateNeeded) return [];
+      return product.openDates.filter(function(d) { return d.place === BASEMENT; })
+        .sort(function(a, b) { return a.expiry_date < b.expiry_date ? -1 : a.expiry_date > b.expiry_date ? 1 : a.id - b.id; });
+    }
+    function outTarget() {
+      var inSession = SessionManager.isActive();
+      if (!inSession && document.getElementById('locationSection').classList.contains('hidden')) return null;
+      var name = inSession ? SessionManager.getLocation() : document.getElementById('outLocation').value;
+      if (!name) return null;
+      if (name === 'Expired') return { kind: 'expired', name: name };
+      if (typeof machines[name] === 'string' && machines[name]) return { kind: 'carry', name: name, machine: machines[name] };
+      return null;
+    }
+    function outDateLabel(d) { return showDate(d.expiry_date) + (d.expiry_date < todayIso() ? ' · Expired' : ''); }
+    function renderOutDates() {
+      var el = document.getElementById('outDates');
+      var dates = outBasementDates(currentProduct), t = outTarget();
+      if (!currentProduct || !dates.length || !t) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+      var ids = dates.map(function(d) { return d.id; });
+      if (outTicksUpc !== currentProduct.upc) { outTicksUpc = currentProduct.upc; outTicks = [ids[0]]; }
+      outTicks = outTicks.filter(function(id) { return ids.indexOf(id) >= 0; });
+      var going = t.kind === 'carry';
+      if (dates.length === 1) {
+        el.innerHTML = '<div class="carry-one">' + (going ? 'Date going with it: ' : 'Date that expired: ') + escapeHtml(outDateLabel(dates[0])) + '</div>' +
+          '<div class="carry-hint">' + (going ? 'It moves to ' + escapeHtml(t.name) + ' with the OUT.' : 'It comes off the basement list with the OUT.') + '</div>';
+      } else {
+        el.innerHTML = '<div class="carry-title">' + (going ? 'Dates going with it' : 'Dates that expired') + '</div><div class="carry-chips">' +
+          dates.map(function(d) {
+            var on = outTicks.indexOf(d.id) >= 0;
+            return '<button type="button" class="carry-chip" aria-pressed="' + on + '" data-id="' + d.id + '">' + (on ? '✓ ' : '') + escapeHtml(outDateLabel(d)) + '</button>';
+          }).join('') + '</div><div class="carry-hint">' +
+          (going ? 'Ticked dates move to ' + escapeHtml(t.name) + ' with the OUT.' : 'Ticked dates come off the basement list with the OUT.') + '</div>';
+        Array.prototype.forEach.call(el.querySelectorAll('.carry-chip'), function(b) {
+          b.onclick = function() {
+            var id = Number(b.getAttribute('data-id')), at = outTicks.indexOf(id);
+            if (at >= 0) outTicks.splice(at, 1); else outTicks.push(id);
+            renderOutDates();
+          };
+        });
+      }
+      el.classList.remove('hidden');
+    }
+    // What the OUT about to be sent will move: read before the count changes, so the screen and the move agree.
+    function outMove() {
+      var t = outTarget(), dates = outBasementDates(currentProduct);
+      if (!t || !dates.length || document.getElementById('outDates').classList.contains('hidden')) return null;
+      var ids = dates.length === 1 ? [dates[0].id] : dates.map(function(d) { return d.id; }).filter(function(id) { return outTicks.indexOf(id) >= 0; });
+      return ids.length ? { kind: t.kind, name: t.name, machine: t.machine, ids: ids } : null;
+    }
+    // The count is already saved when this runs. A failed move says so and offers the same move again; the count is never resent.
+    function sendOutDates(move, product, msg) {
+      var body = move.kind === 'carry' ? { action: 'carry', place: move.machine, ids: move.ids } : { action: 'out_expired', ids: move.ids };
+      apiPostJson(DATE_WRITE, body)
+        .then(function(res) {
+          var b = res.body || {};
+          if (!res.ok || b.ok !== true) throw new Error(b.error || ('status ' + res.status));
+          var tail;
+          if (move.kind === 'carry') {
+            var n = Number(b.carried) || 0;
+            tail = n + (n === 1 ? ' date' : ' dates') + ' moved to ' + move.name;
+          } else {
+            var ended = Array.isArray(b.ended) ? b.ended : [];
+            var exp = ended.filter(function(e) { return e.end_kind === 'expired'; }).length, near = ended.length - exp, parts = [];
+            if (exp) parts.push(exp + (exp === 1 ? ' date' : ' dates') + ' filed as expired');
+            if (near) parts.push(near + (near === 1 ? ' date' : ' dates') + ' filed as pulled before its date');
+            tail = parts.length ? parts.join(', ') : 'no dates changed';
+          }
+          showProductMessage(msg + ' · ' + tail, 'success');
+          if (currentProduct && currentProduct.upc === product.upc) refreshDates(product.upc);
+        })
+        .catch(function(err) {
+          playErrorBuzz();
+          showBanner('OUT saved: ' + product.name + '. The dates didn\'t move. (' + err.message + ')', 'error',
+            [{ label: 'Move dates again', run: function() { sendOutDates(move, product, msg); } }]);
+        });
+    }
+
     function processTransaction(type, location) {
       if (!currentProduct) return;
+      var move = type === 'OUT' ? outMove() : null;
+      var product = currentProduct;
       showProductMessage('Processing...', 'success');
       apiPostJson('/inventory/transaction', {
         upc: currentProduct.upc,
@@ -1060,18 +1162,18 @@
           var result = res.body;
           if (result.success) {
             playSuccessBeep();
-            showProductMessage(
-              type + ': ' + result.product_name +
+            var done = type + ': ' + result.product_name +
               ' (' + result.previous_qty + ' → ' + result.new_qty + ')' +
-              (location ? ' → ' + location : ''),
-              'success'
-            );
+              (location ? ' → ' + location : '');
+            showProductMessage(done, 'success');
+            if (move) sendOutDates(move, product, done);
             document.getElementById('productQty').textContent = result.new_qty;
             currentProduct.qty = result.new_qty;
             transactionQty = 1;
             document.getElementById('qtyDisplay').textContent = '1';
             document.getElementById('locationSection').classList.add('hidden');
             document.getElementById('outLocation').value = '';
+            renderOutDates();
             var normalizedUpc = normalizeUpc(currentProduct.upc);
             for (var i = 0; i < allProducts.length; i++) {
               if (normalizeUpc(allProducts[i].upc) === normalizedUpc) {
@@ -2022,6 +2124,7 @@
         currentProduct.leadDays = fresh.leadDays;
         currentProduct.openDates = fresh.openDates;
         renderDates(currentProduct);
+        renderOutDates();
       }).catch(function() {
         showProductMessage('Saved, but the date list couldn\'t refresh. Scan it again to see it.', 'warning');
       });
