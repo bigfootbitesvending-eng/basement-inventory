@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Pick List (v1.10)</title>
+  <title>Pick List (v1.11)</title>
   <link rel="stylesheet" href="/shared/components.css">
 <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -202,6 +202,19 @@
     .carry-chip:focus-visible { outline: 2px solid #333; outline-offset: 2px; }
     .carry-one { font-size: 0.9rem; font-weight: 600; color: #333; }
     .carry-hint { font-size: 0.8rem; color: #555; margin-top: 6px; }
+
+    /* PRD-006 Behavior 7: Check dates, the same table as the restock email, under the items. */
+    .check-dates { margin: 18px 0 12px; padding: 12px; border-radius: 8px; background: #fff; border: 1px solid #e3d3bd; }
+    .check-dates h3 { font-size: 1.05rem; margin-bottom: 4px; }
+    .check-dates p { font-size: 0.9rem; color: #333; margin-bottom: 8px; }
+    .check-dates-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; margin-bottom: 10px; }
+    .check-dates-table th { text-align: left; font-size: 0.78rem; color: #555; padding: 4px 6px; border-bottom: 2px solid #999; }
+    .check-dates-table td { padding: 6px; border-bottom: 1px solid #e3e3e3; vertical-align: top; }
+    .check-dates-table td.when { white-space: nowrap; }
+    .check-dates-table tr.expired td { font-weight: 700; }
+    .check-dates-btn { display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 18px; border-radius: 6px;
+      background: #7B4A12; color: #fff; font-weight: 600; text-decoration: none; }
+    .dates-warning { margin: 18px 0 12px; padding: 12px 14px; border-radius: 8px; background: #fff3cd; color: #856404; border: 1px solid #ffeeba; font-weight: 600; }
   </style>
 </head>
 <body>
@@ -258,6 +271,7 @@
     var items = [];
     var itemState = {};
     var hasPriorSession = false;
+    var checkDates = null;   // PRD-006: Pick List — Read's check_dates; null from a Read that doesn't send it
     var isToday = true;
 
     function capitalize(s) {
@@ -285,7 +299,7 @@
       isToday = !parsedDate || isSameDate(parsedDate, today);
       
       document.getElementById('header').innerHTML =
-        '<h1>📋 ' + capitalize(locationParam) + ' Pick List (v1.10)</h1>' +
+        '<h1>📋 ' + capitalize(locationParam) + ' Pick List (v1.11)</h1>' +
         '<div class="meta" id="metaLine">' + dateParam + ' — ' + (modeParam === 'light' ? 'Light Stock' : 'Full Stock') + '</div>' +
         '<div class="explainer">Days left: what\'s at the location, at the last 30 days\' pace.</div>';
 
@@ -326,6 +340,7 @@
           var payload = Array.isArray(result.body) ? result.body[0] : result.body;
           items = payload.items || [];
           hasPriorSession = payload.has_prior_session === true;
+          checkDates = payload.check_dates || null;
           items.forEach(function(item) {
             itemState[item.upc] = { expanded: false, touched: false, qty: 0, carry: startTicks(item) };
           });
@@ -426,6 +441,29 @@
       return labels.length ? '<div class="date-note">Dates going: ' + labels.join('; ') + '</div>' : '';
     }
 
+    // ---- PRD-006 Behavior 7: Check dates, the same rows and words as the restock email ----
+    // Pick List — Read sends check_dates: { machine, rows } (rows sorted expired first, then soonest), { machine, failed },
+    // or { machine, unknown }. Nothing due, or a Read from before the change: nothing shows.
+    function esc(s) {
+      return String(s === undefined || s === null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+    function checkDatesHtml() {
+      var c = checkDates;
+      if (!c) return '';
+      if (c.failed !== undefined) return '<div class="dates-warning">⚠️ Dates not checked today, so expired stock could be on the shelf. ' + esc(c.failed) + '</div>';
+      if (c.unknown) return '<div class="dates-warning">⚠️ Dates not checked: ' + esc(c.machine) + ' isn\'t an active location.</div>';
+      var rows = Array.isArray(c.rows) ? c.rows : [];
+      if (!rows.length) return '';
+      return '<div class="check-dates"><h3>Check dates</h3>' +
+        '<p>Look for these dates on the shelf. Pull any you find, then mark what you found.</p>' +
+        '<table class="check-dates-table"><tr><th>Product</th><th>When</th></tr>' +
+        rows.map(function(r) {
+          return '<tr' + (r.expired === true ? ' class="expired"' : '') + '><td>' + esc(r.product_name || r.upc) + '</td><td class="when">' + esc(r.label) + '</td></tr>';
+        }).join('') +
+        '</table><a class="check-dates-btn" href="./?place=' + encodeURIComponent(c.machine) + '">Mark what you found</a></div>';
+    }
+
     function findItem(upc) {
       for (var i = 0; i < items.length; i++) {
         if (items[i].upc === upc) return items[i];
@@ -446,7 +484,7 @@
           document.getElementById('endSessionBtn').style.display = 'none';
           document.getElementById('resetBtnTop').style.display = 'none';
           document.getElementById('resetBtnBottom').style.display = 'none';
-          container.innerHTML = '<div class="empty-state">No items for this location and date.</div>';
+          container.innerHTML = '<div class="empty-state">No items for this location and date.</div>' + checkDatesHtml();
         return;
       }
 
@@ -470,6 +508,7 @@
         html += '<div class="category-header">' + cat + ' — ' + byCategory[cat].length + '</div>';
         byCategory[cat].forEach(function(item) { html += renderItem(item); });
       });
+      html += checkDatesHtml();
 
       container.innerHTML = html;
       document.getElementById('endSessionBtn').style.display = 'block';
