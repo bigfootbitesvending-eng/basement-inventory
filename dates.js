@@ -1,7 +1,8 @@
     // Basement Inventory and Location Dates share this file (PRD-006 item 4, step 0: moved out of index.html v3.6.0, text unchanged).
     // It is a plain script, loaded before each page's own script. Its functions use these globals from the page that loads it:
     // currentProduct, datePlace, datePlaceName, apiGetJson, apiPostJson, mapProduct, escapeHtml, showBanner, showProductMessage,
-    // playErrorBuzz, onDatesRefreshed (called with the product after its dates are read again), and (Basement Inventory only) stopScanner. Markup ids: docs/specs/prd-006-step0-shared-dates.md
+    // playErrorBuzz, onDatesRefreshed (called with the product after its dates are read again), and (Location Dates only)
+    // listContextFor, onDatesSaved and onDateOfferHidden, and (Basement Inventory only) stopScanner. Markup ids: docs/specs/prd-006-step0-shared-dates.md
     // in bigfoot-bites-repo. The indentation is the page's, kept so the page tests' mutations still match this text.
 
     // ============================================
@@ -88,6 +89,8 @@
     // source 'in': offered after an IN, so it ends in a date or a Skip (an offer outcome).
     // source 'button': the person chose "Add a date" for stock already here; Cancel sends nothing and the count is untouched.
     var dateOfferSource = null;
+    // { list_date } when the form's product is on the location's shopping list, so a save answers that item (PRD-006 Behavior 12).
+    var dateOfferList = null;
     function offerDate(source) {
       if (!isTracked(currentProduct)) return;
       var offer = document.getElementById('dateOffer');
@@ -96,6 +99,7 @@
         document.getElementById('dateRows').innerHTML = '';
         addDateRow();
       }
+      dateOfferList = typeof listContextFor === 'function' ? listContextFor(currentProduct) : null;
       dateOfferSource = source === 'button' && !(dateOfferSource === 'in' && !offer.classList.contains('hidden')) ? 'button' : 'in';
       document.getElementById('dateSkipBtn').textContent = dateOfferSource === 'in' ? 'Skip' : 'Cancel';
       setDateBusy(false);
@@ -108,8 +112,10 @@
       document.getElementById('dateOffer').classList.add('hidden');
       document.getElementById('dateRows').innerHTML = '';
       dateOfferSource = null;
+      dateOfferList = null;
       var btn = document.getElementById('addDateBtn');
       if (btn) btn.classList.toggle('hidden', !isTracked(currentProduct));
+      if (typeof onDateOfferHidden === 'function') onDateOfferHidden();
     }
     function setDateBusy(busy, label) {
       dateBusy = busy;
@@ -143,13 +149,15 @@
       var product = currentProduct;
       var what = product.name + ', ' + dates.map(showDate).join('; ');
       setDateBusy(true, 'Saving…');
-      var place = datePlace, placeName = datePlaceName;
-      var payload = { action: 'add_dates', upc: product.upc, place: place, offered_from: 'scan', dates: entries };
+      var place = datePlace, placeName = datePlaceName, list = dateOfferList;
+      var payload = { action: 'add_dates', upc: product.upc, place: place, offered_from: dateOfferList ? 'shopping_list' : 'scan', dates: entries };
+      if (list) payload.list_date = list.list_date;
       if (printFormat) payload.print_format = printFormat;
       apiPostJson(DATE_WRITE, payload).then(function(res) {
         var b = res.body || {};
         if (!res.ok || b.ok !== true) throw new Error(b.error || ('status ' + res.status));
         var added = Array.isArray(b.added) ? b.added : [];
+        if (typeof onDatesSaved === 'function') onDatesSaved(product, place, list, b.outcome, dates);
         hideDateOffer();
         if (added.length) showBanner('Saved' + (place !== BASEMENT ? ' at ' + placeName : '') + ': ' + product.name + ', ' + added.map(showDate).join('; ') +
           (added.length < dates.length ? '. The rest were already on file.' : '.'), 'success');

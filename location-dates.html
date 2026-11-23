@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Location Dates v1.2.0</title>
+  <title>Location Dates v1.3.0</title>
   <!-- BUG-059: the pinned file's hash, so a changed file from the CDN is refused -->
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" integrity="sha384-c9d8RFSL+u3exBOJ4Yp3HUJXS4znl9f+z66d1y54ig+ea249SpqR+w1wyvXz/lk+" crossorigin="anonymous"></script>
   <!-- The date form, photo dates and dates on file, shared with Basement Inventory (PRD-006 item 4) -->
-  <script src="dates.js?v=3.8.1"></script>
+  <script src="dates.js?v=3.8.2"></script>
   <style>
     /* Location Dates (PRD-006 item 4, step 1): dating stock on a location's shelf, on its own page (Randy, 2026-11-21:
        "Why am I seeing the basement inventory screen?"). The date styles match Basement Inventory's. */
@@ -77,6 +77,25 @@
     .date-line { flex-wrap: wrap; }
     .date-line .found-btns { display: flex; gap: 6px; flex-shrink: 0; }
     .date-line button.wrong-date { flex: 0 0 100%; padding: 0; border: none; background: none; color: #4472C4; text-align: left; font-size: 0.95rem; }
+    /* The shopping list (PRD-006 Behavior 12) */
+    .bought-title { font-size: 1.15rem; font-weight: 600; }
+    .tally { margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: #eef3fb; font-size: 0.9rem; }
+    .cat { margin-top: 14px; font-size: 0.8rem; font-weight: 700; color: #555; }
+    .it { padding: 10px 0; border-top: 1px solid #e3e3e3; scroll-margin-top: 90px; }
+    .it-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+    .it-name { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+    .it-buy { flex-shrink: 0; font-size: 0.85rem; color: #555; }
+    .it-acts { display: flex; gap: 8px; margin-top: 8px; }
+    .it-acts button, .it-done button { min-height: 44px; border: 1px solid #4472C4; border-radius: 6px; background: #fff; color: #4472C4; font-size: 0.95rem; font-weight: 600; cursor: pointer; }
+    .it-acts button { flex: 1; }
+    .it-acts button.quiet { border-color: #9aa1ab; color: #374151; }
+    .it-acts button:disabled, .it-done button:disabled { opacity: 0.5; }
+    .it-done { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 6px; font-size: 0.9rem; font-weight: 600; color: #1f5f2a; }
+    .it-done.no { font-weight: 400; color: #555; }
+    .it-done button { flex-shrink: 0; padding: 0 12px; }
+    .it.off .it-name { font-weight: 400; color: #666; }
+    .it-ndn { margin-top: 4px; font-size: 0.85rem; color: #666; }
+    #scanCard .scanner-container { margin-top: 8px; }
     /* Wrong date: the fields and the three choices, in the date's own line */
     .date-edit { flex: 1 1 100%; min-width: 0; }
     .date-edit-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
@@ -131,7 +150,7 @@
 <body>
   <div class="container">
     <a class="breadcrumb" href="/">← Operator Tools</a>
-    <h1>📍 Location Dates v1.2.0</h1>
+    <h1>📍 Location Dates v1.3.0</h1>
 
     <div id="message" class="message hidden"></div>
     <div id="banner" class="message hidden" role="status"></div>
@@ -145,15 +164,24 @@
       <p class="place-note" id="placeNote"><span class="spin" aria-hidden="true"></span>Loading locations…</p>
     </div>
 
-    <!-- Scan a product to date it, or to mark a date found -->
-    <div class="card" id="scanCard">
+    <!-- What was bought for this location: its latest shopping list from today or yesterday, as emailed at Finalize -->
+    <div id="boughtCard" class="card hidden">
+      <div class="bought-title" id="boughtTitle"></div>
+      <p class="place-note" id="boughtSub"></p>
+      <div id="boughtTally" class="tally hidden" role="status"></div>
+      <div id="boughtItems"></div>
+    </div>
+
+    <!-- Scan a product to date it, or to mark a date found. Folded when there is a list: then it is for anything not on it. -->
+    <details class="card fold" id="scanCard" open>
+      <summary>Scan a product</summary>
       <div class="scanner-container"><div id="reader"></div></div>
       <button id="startScanBtn" class="btn btn-scan" onclick="startScanner()">📷 Start Scanner</button>
       <div class="manual-entry">
         <input type="text" id="manualUpc" placeholder="Or enter UPC manually" inputmode="numeric">
         <button class="btn btn-secondary" onclick="manualLookup()">Go</button>
       </div>
-    </div>
+    </details>
 
     <!-- The scanned product: its dates here, the date form, and its settings. No counts: they are the basement's. -->
     <div id="productPanel" class="card hidden">
@@ -199,10 +227,10 @@
     </div>
 
     <!-- The chosen location's dates on file, soonest first; a tap opens the product above -->
-    <div id="placeDates" class="card hidden">
-      <div class="place-dates-title" id="placeDatesTitle"></div>
+    <details id="placeDates" class="card fold hidden" open>
+      <summary class="place-dates-title" id="placeDatesTitle"></summary>
       <div id="placeDatesBody"></div>
-    </div>
+    </details>
   </div>
 
   <script src="/shared/config.js"></script>
@@ -212,6 +240,7 @@
     var API_BASE = 'https://randysmith42.app.n8n.cloud/webhook';
     var currentProduct = null, datePlace = '', datePlaceName = '', machines = {}, bannerTimer = null;
     var html5QrCode = null, isScanning = false, audioContext = null;
+    var bought = null, formItem = null, linkedPlace = null, linkedList = false;
     var PLACE_KEY = 'bb.locationDatesPlace';
     function atLocation() { return true; }
 
@@ -246,6 +275,7 @@
     function hideMessage() { document.getElementById('message').classList.add('hidden'); }
     function showProductMessage(text, type) { var el = document.getElementById('productMessage'); el.textContent = text; el.className = 'message ' + type; }
     function hideProductMessage() { document.getElementById('productMessage').classList.add('hidden'); }
+    // The banner sticks to the top of the screen, so showing one never moves the page: a long list keeps its place.
     function showBanner(text, type, actions) {
       var el = document.getElementById('banner');
       clearTimeout(bannerTimer);
@@ -258,7 +288,6 @@
         actions.forEach(function(a) { var b = document.createElement('button'); b.textContent = a.label; b.onclick = function() { hideBanner(); a.run(); }; row.appendChild(b); });
         el.appendChild(row);
       }
-      window.scrollTo(0, 0);
     }
     function hideBanner() { clearTimeout(bannerTimer); document.getElementById('banner').classList.add('hidden'); }
 
@@ -280,6 +309,8 @@
         var linked = new URLSearchParams(window.location.search).get('place'), saved = null;
         try { saved = JSON.parse(localStorage.getItem(PLACE_KEY) || 'null'); } catch (e) { saved = null; }
         if (linked) {
+          linkedPlace = linked;
+          linkedList = new URLSearchParams(window.location.search).get('list') === '1';
           if (!choosePlace(linked)) showPlaceNote('The link named a location that isn\'t active (' + linked + '). Choose one.', true);
         } else if (saved && saved.day === todayIso()) choosePlace(saved.place, true);
       }).catch(function(err) {
@@ -307,6 +338,7 @@
       if (!currentProduct) return;
       if (!document.getElementById('dateOffer').classList.contains('hidden')) { answerUnsavedReads(); hideDateOffer(); }
       if (!datePlace) { document.getElementById('productPanel').classList.add('hidden'); currentProduct = null; return; }
+      if (document.getElementById('productPanel').classList.contains('hidden')) { currentProduct = null; return; }
       renderDates(currentProduct);
       if (isTracked(currentProduct)) openDateForm();
     }
@@ -319,15 +351,18 @@
     function loadPlaceDates() {
       var card = document.getElementById('placeDates'), asked = datePlace, name = datePlaceName;
       placeList = null;
+      showBought(undefined);   // the old location's list goes at once
       if (!datePlace) { card.classList.add('hidden'); return; }
       document.getElementById('placeDatesTitle').textContent = 'Dates on file at ' + name;
       document.getElementById('placeDatesBody').innerHTML = '<p class="place-note"><span class="spin" aria-hidden="true"></span>Loading dates…</p>';
+      card.open = true;
       card.classList.remove('hidden');
       apiGetJson('/location-dates/read', { place: asked }).then(function(res) {
         if (asked !== datePlace) return;   // the location changed while it loaded
         var b = res.body || {};
         if (!res.ok || b.ok !== true || !Array.isArray(b.dates)) throw new Error(b.error || ('status ' + res.status));
         showPlaceList(b.dates);
+        showBought(b.list);
       }).catch(function(err) {
         if (asked !== datePlace) return;
         showPlaceList(null, err.message);
@@ -352,9 +387,11 @@
         b.onclick = function() { openFromList(b.getAttribute('data-upc')); };
       });
     }
-    function openFromList(upc) { lookupUpc(upc); window.scrollTo(0, 0); }
+    function openFromList(upc) { lookupUpc(upc, true); if (!bought) window.scrollTo(0, 0); }
     // After a save or a mark, dates.js has the product's dates from the server: put them in the list, with no second read.
     function onDatesRefreshed(product) {
+      var item = listItem(product.upc);
+      if (item) { item.no_date_needed = product.noDateNeeded; item.retired = !!product.retiredAt; item.saved = []; }
       if (!placeList || !datePlace) return;   // still loading, or it failed
       var mine = product.noDateNeeded ? [] : product.openDates.filter(function(d) { return d.place === datePlace; }).map(function(d) {
         return { id: d.id, upc: product.upc, product_name: product.name, expiry_date: d.expiry_date };
@@ -362,7 +399,157 @@
       placeList = placeList.filter(function(d) { return d.upc !== product.upc; }).concat(mine);
       placeList.sort(byDateThenName);
       showPlaceList(placeList);
+      if (item) { renderItem(item); showBoughtCounts(); }
     }
+
+    // ---- The shopping list (PRD-006 Behavior 12): a prompt, never a record that something was stocked. Each item keeps one answer;
+    // an item left alone has none. The list is what Finalize emailed; what can be dated is what the catalog says now.
+    function trackable(i) { return i.in_catalog && !i.retired && !i.no_date_needed; }
+    function dated(i) { return i.answer === 'dated' || i.answer === 'already_on_file'; }
+    function listItem(upc) { return bought ? bought.items.filter(function(i) { return i.upc === upc; })[0] || null : null; }
+    // dates.js asks: does a date saved for this product answer an item on the list?
+    function listContextFor(product) {
+      var item = product && listItem(product.upc);
+      return item && trackable(item) ? { list_date: bought.list_date } : null;
+    }
+    // list undefined: not known yet (or the read before it sent one); null: none from today or yesterday.
+    function showBought(list) {
+      var card = document.getElementById('boughtCard'), has = !!(list && list.items && list.items.length);
+      bought = has ? list : null;
+      formItem = null;
+      document.getElementById('boughtItems').innerHTML = '';
+      document.getElementById('boughtTally').classList.add('hidden');
+      document.getElementById('boughtTally').textContent = '';
+      document.querySelector('#scanCard summary').textContent = has ? 'Something else? Scan it' : 'Scan a product';
+      document.getElementById('boughtTitle').textContent = has ? 'Bought for ' + datePlaceName : '';
+      if (list === undefined || !datePlace) { card.classList.add('hidden'); if (!isScanning) document.getElementById('scanCard').open = true; return; }
+      card.classList.toggle('hidden', false);
+      if (!isScanning) document.getElementById('scanCard').open = !has;
+      document.getElementById('placeDates').open = !has || (linkedPlace === datePlace && !linkedList);
+      if (!has) { document.getElementById('boughtSub').textContent = 'No shopping list for ' + datePlaceName + ' from today or yesterday.'; return; }
+      var cat = null;
+      document.getElementById('boughtItems').innerHTML = bought.items.map(function(i, n) {
+        var head = i.pick_category !== cat ? '<div class="cat">' + escapeHtml(i.pick_category) + '</div>' : '';
+        cat = i.pick_category; i.saved = []; i.busy = false; i.at = n;
+        return head + '<div class="it" id="bought-' + n + '"><div class="it-head">' + '<span class="it-name">' + escapeHtml(i.product_name) + '</span><span class="it-buy">Buy ' + escapeHtml(i.buy_qty) + '</span></div><div class="it-body"></div></div>';
+      }).join('');
+      bought.items.forEach(renderItem);
+      showBoughtCounts();
+    }
+    function showBoughtCounts() {
+      var t = bought.items.filter(trackable), done = t.filter(dated).length, no = t.filter(function(i) { return i.answer === 'didnt_get_it'; }).length;
+      var off = bought.items.filter(function(i) { return i.no_date_needed; }).length, left = t.length - done - no, tally = document.getElementById('boughtTally');
+      document.getElementById('boughtSub').textContent = 'Shopping list, ' + showDate(bought.list_date) + ' · ' + (t.length ? t.length + ' to date' : 'nothing to date') + (off ? ' · ' + off + ' no date needed' : '');
+      var parts = [];
+      if (done) parts.push(done + ' dated');
+      if (no) parts.push(no + ' didn\'t get');
+      parts.push(left ? left + ' left' : 'all answered');
+      tally.textContent = parts.join(' · ');
+      tally.classList.toggle('hidden', !(done + no));
+    }
+    function itemDates(item) {
+      var all = (placeList || []).filter(function(d) { return d.upc === item.upc; }).map(function(d) { return d.expiry_date; });
+      item.saved.forEach(function(d) { if (all.indexOf(d) < 0) all.push(d); });
+      return all.sort();
+    }
+    function renderItem(item) {
+      if (item === formItem) return;   // its date form is open here
+      var el = document.getElementById('bought-' + item.at), body = el && el.querySelector('.it-body');
+      if (!body) return;
+      el.classList.toggle('off', !trackable(item));
+      var off = item.busy ? ' disabled' : '';
+      if (!trackable(item)) {
+        body.innerHTML = '<p class="it-ndn">' + (!item.in_catalog ? 'Not in the catalog' : item.retired ? 'Retired: takes no new dates' : 'No date needed') + '</p>';
+      } else if (dated(item)) {
+        body.innerHTML = '<div class="it-done"><span>✓ ' + escapeHtml(itemDates(item).map(showDate).join('; ') || 'Dated') + '</span><button type="button" data-do="form"' + off + '>Add another</button></div>';
+      } else if (item.answer === 'didnt_get_it') {
+        body.innerHTML = '<div class="it-done no"><span>Didn\'t get it</span><button type="button" data-do="undo"' + off + '>Undo</button></div>';
+      } else {
+        body.innerHTML = '<div class="it-acts"><button type="button" data-do="form"' + off + '>Add date</button><button type="button" class="quiet" data-do="no"' + off + '>Didn\'t get it</button></div>';
+      }
+      Array.prototype.forEach.call(body.querySelectorAll('button'), function(b) {
+        b.onclick = function() {
+          var what = b.getAttribute('data-do');
+          if (what === 'form') openItemForm(item); else sendAnswer(item, what === 'no' ? 'didnt_get_it' : null);
+        };
+      });
+    }
+    // The one date form, moved under the item. product: the scanned product, when a scan got here.
+    function openItemForm(item, product) {
+      if (dateBusy || item.busy) return;
+      if (!document.getElementById('dateOffer').classList.contains('hidden')) { answerUnsavedReads(); hideDateOffer(); }
+      document.getElementById('productPanel').classList.add('hidden');
+      currentProduct = product || { upc: item.upc, name: item.product_name, pickCategory: item.pick_category, retiredAt: null, noDateNeeded: false, pullDays: 0, leadDays: 14, openDates: [] };
+      var slot = document.getElementById('bought-' + item.at).querySelector('.it-body');
+      formItem = item;
+      slot.innerHTML = '';
+      slot.appendChild(document.getElementById('dateOffer'));
+      openDateForm();
+      document.getElementById('bought-' + item.at).scrollIntoView({ block: 'start' });
+    }
+    // dates.js: the form closed. It goes back to the product panel, and the item shows its state again.
+    function onDateOfferHidden() {
+      var offer = document.getElementById('dateOffer'), item = formItem;
+      formItem = null;
+      document.getElementById('datesGroup').insertBefore(offer, document.getElementById('addDateBtn'));
+      if (item && bought) renderItem(item);
+    }
+    // dates.js: the server saved these dates. Shown at once; the refresh that follows brings the ids.
+    function onDatesSaved(product, place, list, outcome, dates) {
+      if (place !== datePlace) return;
+      if (placeList) {
+        dates.forEach(function(d) {
+          if (!placeList.some(function(r) { return r.upc === product.upc && r.expiry_date === d; })) placeList.push({ id: 0, upc: product.upc, product_name: product.name, expiry_date: d });
+        });
+        placeList.sort(byDateThenName);
+        showPlaceList(placeList);
+      }
+      var item = list && bought && list.list_date === bought.list_date ? listItem(product.upc) : null;
+      if (!item) return;
+      item.answer = outcome;
+      item.saved = item.saved.concat(dates);
+      renderItem(item);
+      showBoughtCounts();
+    }
+    // Didn't get it (next 'didnt_get_it') or its Undo (next null): shown only once the server has it.
+    function sendAnswer(item, next) {
+      if (!item || item.busy) return;
+      var list = bought, place = datePlace;
+      item.busy = true;
+      renderItem(item);
+      apiPostJson(DATE_WRITE, next ? { action: 'add_dates', upc: item.upc, place: datePlace, offered_from: 'shopping_list', list_date: bought.list_date, dates: [], outcome: 'didnt_get_it' }
+                                   : { action: 'undo_list_answer', upc: item.upc, place: datePlace, list_date: bought.list_date }).then(function(res) {
+        var b = res.body || {};
+        if (!res.ok || b.ok !== true) throw new Error(b.error || ('status ' + res.status));
+        item.answer = next;
+        item.busy = false;
+        if (bought === list && datePlace === place) { hideBanner(); renderItem(item); showBoughtCounts(); }
+      }).catch(function(err) {
+        item.busy = false;   // failed
+        if (bought === list && datePlace === place) renderItem(item);
+        playErrorBuzz();
+        showBanner((next ? 'Nothing saved. Couldn\'t record Didn\'t get it for ' : 'Nothing changed. Couldn\'t undo Didn\'t get it for ') + item.product_name + '. (' + err.message + ')', 'error');
+      });
+    }
+    // A scan of something on the list goes to its list item, so its date answers that item and is never saved twice.
+    function jumpToListItem(product) {
+      var item = listItem(product.upc);
+      if (!item || !trackable(item) || !isTracked(product)) return false;
+      var here = product.openDates.some(function(d) { return d.place === datePlace; });
+      var acts = here ? [{ label: 'See its dates here', run: function() { showProductPanel(product, true); } }] : [];
+      if (!isScanning) document.getElementById('scanCard').open = false;
+      document.getElementById('manualUpc').value = '';
+      if (dated(item)) {
+        if (!document.getElementById('dateOffer').classList.contains('hidden')) { answerUnsavedReads(); hideDateOffer(); }
+        showBanner(product.name + ' is on your list and already dated.', 'success', acts);
+        document.getElementById('bought-' + item.at).scrollIntoView({ block: 'start' });
+      } else {
+        showBanner(product.name + ' is on your list, so its date goes there.', 'success', acts);
+        openItemForm(item, product);
+      }
+      return true;
+    }
+
 
     // ---- Scan
     function startScanner() {
@@ -378,7 +565,7 @@
     }
     function onScanSuccess(text) { stopScanner(); lookupUpc(text); }
     function manualLookup() { initAudio(); var upc = document.getElementById('manualUpc').value.trim(); if (upc) lookupUpc(upc); }
-    function lookupUpc(upc) {
+    function lookupUpc(upc, fromList) {
       hideBanner();
       if (!datePlace) { playErrorBuzz(); showBanner('Choose the location first, so the date goes on the right shelf.', 'error'); return; }
       document.getElementById('productPanel').classList.add('hidden');
@@ -388,10 +575,12 @@
         if (res.status === 404) { playErrorBuzz(); showBanner('UPC ' + upc + ' isn\'t in the catalog. Add it in Basement Inventory, then scan it here.', 'error'); return; }
         if (!res.ok) { playErrorBuzz(); showBanner((res.body && res.body.error) || ('Lookup failed (' + res.status + ')'), 'error'); return; }
         playSuccessBeep();
-        showProductPanel(mapProduct(res.body));
+        showProductPanel(mapProduct(res.body), fromList);
       }).catch(function(err) { hideMessage(); playErrorBuzz(); showBanner('Error: ' + err.message, 'error'); });
     }
-    function showProductPanel(product) {
+    // fromList: opened from the dates on file, to look or to mark; a scan of something on the list goes to its list item instead.
+    function showProductPanel(product, fromList) {
+      if (!fromList && jumpToListItem(product)) return;
       currentProduct = product;
       document.getElementById('productName').textContent = product.name;
       document.getElementById('productUpc').textContent = 'UPC: ' + product.upc;
@@ -404,6 +593,7 @@
       renderDates(product);
       if (isTracked(product)) openDateForm();   // dating is the only thing to do at a location
       document.getElementById('productPanel').classList.remove('hidden');
+      if (bought) document.getElementById('productPanel').scrollIntoView({ block: 'start' });
       document.getElementById('manualUpc').value = '';
     }
 
