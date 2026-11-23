@@ -51,22 +51,25 @@
       out.textContent = showDate(iso) + (past ? ' · Already expired' + (onDefault ? '. Is the year right?' : '') : '');
       out.className = 'date-readback' + (past ? ' warn' : '');
     }
-    function addDateRow() {
-      var rows = document.getElementById('dateRows');
-      var row = document.createElement('div');
-      row.className = 'date-row';
+    // One date's fields and its read-back line: the date form's rows, and Wrong date on Location Dates.
+    function dateFieldsHtml() {
       var opts = '<option value="">Month</option>';
       for (var i = 0; i < 12; i++) opts += '<option value="' + String(i + 1).padStart(2, '0') + '">' + MONTHS[i] + '</option>';
       // Years: two back (stale stock does arrive) to five ahead (cans run to 2030); this year is chosen.
       var thisYear = new Date().getFullYear(), years = '';
       for (var yr = thisYear - 2; yr <= thisYear + 5; yr++) years += '<option value="' + yr + '"' + (yr === thisYear ? ' selected' : '') + '>' + yr + '</option>';
-      row.innerHTML =
-        '<div class="date-fields">' +
+      return '<div class="date-fields">' +
           '<label class="date-month-label">Month<select class="date-month">' + opts + '</select></label>' +
           '<label>Day<input class="date-day" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" autocomplete="off"></label>' +
           '<label class="date-year-label">Year<select class="date-year">' + years + '</select></label>' +
         '</div>' +
-        '<div class="date-readback blank"></div>' +
+        '<div class="date-readback blank"></div>';
+    }
+    function addDateRow() {
+      var rows = document.getElementById('dateRows');
+      var row = document.createElement('div');
+      row.className = 'date-row';
+      row.innerHTML = dateFieldsHtml() +
         (photoOn() ? photoRowHtml() : '') +
         (rows.children.length ? '<button type="button" class="date-row-remove">Remove this date</button>' : '');
       row.addEventListener('input', function(e) { if (e.target && e.target.classList) e.target.classList.remove('date-unclear'); updateReadback(row); });
@@ -232,12 +235,13 @@
         var at = ' data-id="' + escapeHtml(d.id) + '" data-date="' + escapeHtml(d.expiry_date) + '"';
         return '<div class="date-line"><span>' + escapeHtml(showDate(d.expiry_date)) + (d.expiry_date < today ? ' · <b>Expired</b>' : '') + '</span>' +
           (here ? '<span class="found-btns"><button type="button"' + at + ' data-found="pulled">Pulled it</button>' +
-                  '<button type="button" class="none-there"' + at + ' data-found="none_there">None there</button></span>'
+                  '<button type="button" class="none-there"' + at + ' data-found="none_there">None there</button></span>' +
+                  '<button type="button" class="wrong-date"' + at + ' data-wrong="1">Wrong date</button>'
                 : '<button type="button"' + at + '>Remove</button>') + '</div>';
       }).join('');
       box.classList.remove('hidden');
       Array.prototype.forEach.call(box.querySelectorAll('button[data-id]'), function(btn) {
-        btn.onclick = function() { if (btn.getAttribute('data-found')) markFound(btn); else removeDate(btn); };
+        btn.onclick = function() { if (btn.getAttribute('data-wrong')) openWrongDate(btn); else if (btn.getAttribute('data-found')) markFound(btn); else removeDate(btn); };
       });
     }
 
@@ -291,6 +295,71 @@
           btn.textContent = found === 'pulled' ? 'Pulled it' : 'None there';
           showBanner('Nothing changed. Couldn\'t mark ' + label + ' for ' + product.name + '. (' + err.message + ')', 'error');
         });
+    }
+
+    // Wrong date (Randy, 2026-11-23): a record at a location that isn't what is printed, or was never there. Change keeps the record
+    // (the server merges it with one already on file); Remove files it "removed", so it never counts as pulled, expired or none there.
+    function openWrongDate(btn) {
+      if (dateBusy || !currentProduct) return;
+      var id = Number(btn.getAttribute('data-id')), iso = btn.getAttribute('data-date');
+      var box = btn.parentNode;
+      box.innerHTML = '<div class="date-edit"><div class="dates-title">Wrong date: ' + escapeHtml(showDate(iso)) + '</div>' + dateFieldsHtml() +
+        '<div class="date-edit-acts"><button type="button" class="btn btn-in wrong-change">Change the date</button>' +
+        '<button type="button" class="btn wrong-remove">Remove it</button>' +
+        '<button type="button" class="btn btn-secondary wrong-cancel">Cancel</button></div></div>';
+      var year = box.querySelector('.date-year');
+      box.querySelector('.date-month').value = iso.slice(5, 7);
+      box.querySelector('.date-day').value = String(Number(iso.slice(8)));
+      year.value = iso.slice(0, 4);
+      if (year.value !== iso.slice(0, 4)) {   // a year outside the pulldown
+        var o = document.createElement('option'); o.value = o.textContent = iso.slice(0, 4); year.insertBefore(o, year.firstChild); year.value = o.value;
+      }
+      updateReadback(box);
+      box.addEventListener('input', function() { if (box.querySelector('.date-edit')) updateReadback(box); });
+      box.addEventListener('change', function() { if (box.querySelector('.date-edit')) updateReadback(box); });
+      box.querySelector('.wrong-change').onclick = function() { changeWrongDate(box, id, iso); };
+      box.querySelector('.wrong-remove').onclick = function() { removeWrongDate(box, id, iso); };
+      box.querySelector('.wrong-cancel').onclick = function() { renderDates(currentProduct); };
+    }
+    function setWrongBusy(box, busy) {
+      dateBusy = busy;
+      Array.prototype.forEach.call(box.querySelectorAll('button'), function(b) { b.disabled = busy; });
+      if (!busy) { box.querySelector('.wrong-change').textContent = 'Change the date'; box.querySelector('.wrong-remove').textContent = 'Remove it'; }
+    }
+    function sendWrongDate(box, body, done, failed) {
+      var product = currentProduct;
+      setWrongBusy(box, true);
+      apiPostJson(DATE_WRITE, body).then(function(res) {
+        var b = res.body || {};
+        if (!res.ok || b.ok !== true) throw new Error(b.error || ('status ' + res.status));
+        dateBusy = false;
+        if (b.changed === false) showBanner('Nothing changed. That date was already marked.', 'warning');
+        else showBanner(done(b), 'success');
+        refreshDates(product.upc);
+      }).catch(function(err) {
+        setWrongBusy(box, false);
+        showBanner('Nothing changed. ' + failed + ' (' + err.message + ')', 'error');
+      });
+    }
+    function changeWrongDate(box, id, iso) {
+      if (dateBusy || !currentProduct) return;
+      var product = currentProduct, placeName = datePlaceName, next = rowDate(box);
+      if (!next) { showBanner('Nothing changed. The date needs the month, day and year.', 'error'); return; }
+      if (next === iso) { showBanner('Nothing changed. That\'s the date on file.', 'warning'); return; }
+      box.querySelector('.wrong-change').textContent = 'Saving…';
+      sendWrongDate(box, { action: 'correct_date', id: id, date: next }, function(b) {
+        return 'Changed at ' + placeName + ': ' + product.name + ', ' + showDate(iso) + ' is now ' + showDate(next) + '.' +
+          (b.merged_into ? ' ' + showDate(next) + ' was already on file, so there\'s one date now.' : '');
+      }, 'Couldn\'t change ' + showDate(iso) + ' for ' + product.name + '.');
+    }
+    function removeWrongDate(box, id, iso) {
+      if (dateBusy || !currentProduct) return;
+      var product = currentProduct, placeName = datePlaceName, label = showDate(iso);
+      if (!confirm('Remove ' + product.name + ', ' + label + ', at ' + placeName + '? For a date that was never there. If you pulled it, use Pulled it.')) return;
+      box.querySelector('.wrong-remove').textContent = 'Removing…';
+      sendWrongDate(box, { action: 'remove_date', id: id }, function() {
+        return 'Removed: ' + product.name + ', ' + label + ', at ' + placeName + '.';
+      }, 'Couldn\'t remove ' + label + ' for ' + product.name + '.');
     }
 
     function saveDateSettings() {

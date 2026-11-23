@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Location Dates v1.1.0</title>
+  <title>Location Dates v1.2.0</title>
   <!-- BUG-059: the pinned file's hash, so a changed file from the CDN is refused -->
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" integrity="sha384-c9d8RFSL+u3exBOJ4Yp3HUJXS4znl9f+z66d1y54ig+ea249SpqR+w1wyvXz/lk+" crossorigin="anonymous"></script>
   <!-- The date form, photo dates and dates on file, shared with Basement Inventory (PRD-006 item 4) -->
-  <script src="dates.js?v=3.8.0"></script>
+  <script src="dates.js?v=3.8.1"></script>
   <style>
     /* Location Dates (PRD-006 item 4, step 1): dating stock on a location's shelf, on its own page (Randy, 2026-11-21:
        "Why am I seeing the basement inventory screen?"). The date styles match Basement Inventory's. */
@@ -74,7 +74,15 @@
     .date-line:first-of-type { border-top: none; }
     .date-line button { min-height: 44px; padding: 0 14px; border: 1px solid #b23b3b; border-radius: 6px; background: #fff; color: #b23b3b; font-weight: 600; cursor: pointer; }
     .date-line button:disabled { opacity: 0.5; }
+    .date-line { flex-wrap: wrap; }
     .date-line .found-btns { display: flex; gap: 6px; flex-shrink: 0; }
+    .date-line button.wrong-date { flex: 0 0 100%; padding: 0; border: none; background: none; color: #4472C4; text-align: left; font-size: 0.95rem; }
+    /* Wrong date: the fields and the three choices, in the date's own line */
+    .date-edit { flex: 1 1 100%; min-width: 0; }
+    .date-edit-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .date-edit .btn { flex: 1 1 30%; min-height: 44px; margin: 0; padding: 8px 6px; font-size: 0.95rem; }
+    .date-edit .btn.btn-in { background: #548235; color: #fff; border: none; }
+    .date-edit .btn.btn-secondary { background: #e0e0e0; color: #333; border: none; }
     /* The chosen location's dates on file (Randy, 2026-11-23): a row opens its product */
     .place-dates-title { font-weight: 600; margin-bottom: 6px; }
     .list-row { display: flex; width: 100%; min-height: 44px; flex-direction: column; justify-content: center; gap: 2px; padding: 8px 0; border: none; border-top: 1px solid #e3e3e3; background: none; text-align: left; font: inherit; color: inherit; cursor: pointer; }
@@ -123,7 +131,7 @@
 <body>
   <div class="container">
     <a class="breadcrumb" href="/">← Operator Tools</a>
-    <h1>📍 Location Dates v1.1.0</h1>
+    <h1>📍 Location Dates v1.2.0</h1>
 
     <div id="message" class="message hidden"></div>
     <div id="banner" class="message hidden" role="status"></div>
