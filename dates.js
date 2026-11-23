@@ -1,7 +1,7 @@
     // Basement Inventory and Location Dates share this file (PRD-006 item 4, step 0: moved out of index.html v3.6.0, text unchanged).
     // It is a plain script, loaded before each page's own script. Its functions use these globals from the page that loads it:
     // currentProduct, datePlace, datePlaceName, apiGetJson, apiPostJson, mapProduct, escapeHtml, showBanner, showProductMessage,
-    // playErrorBuzz, and (Basement Inventory only) renderOutDates and stopScanner. Markup ids: docs/specs/prd-006-step0-shared-dates.md
+    // playErrorBuzz, onDatesRefreshed (called with the product after its dates are read again), and (Basement Inventory only) stopScanner. Markup ids: docs/specs/prd-006-step0-shared-dates.md
     // in bigfoot-bites-repo. The indentation is the page's, kept so the page tests' mutations still match this text.
 
     // ============================================
@@ -646,7 +646,7 @@
         currentProduct.leadDays = fresh.leadDays;
         currentProduct.openDates = fresh.openDates;
         renderDates(currentProduct);
-        if (typeof renderOutDates === 'function') renderOutDates();   // Basement Inventory only (PRD-006 item 6)
+        if (typeof onDatesRefreshed === 'function') onDatesRefreshed(currentProduct);   // what else on the page shows its dates
       }).catch(function() {
         showProductMessage('Saved, but the date list couldn\'t refresh. Scan it again to see it.', 'warning');
       });

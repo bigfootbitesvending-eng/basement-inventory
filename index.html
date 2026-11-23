@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Basement Inventory v3.7.0</title>
+  <title>Basement Inventory v3.8.0</title>
   <!-- Location dating moved to Location Dates (PRD-006). Restock emails already sent link here as ?place=<machine>, so the
        forward stays for good. It runs before anything else loads, and replaces this page so Back does not come here. -->
   <script>
@@ -15,7 +15,7 @@
   <!-- BUG-059: the pinned file's hash, so a changed file from the CDN is refused (same hash on unpkg and jsDelivr, 2026-11-21) -->
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" integrity="sha384-c9d8RFSL+u3exBOJ4Yp3HUJXS4znl9f+z66d1y54ig+ea249SpqR+w1wyvXz/lk+" crossorigin="anonymous"></script>
   <script src="session.js"></script>
-  <script src="dates.js?v=3.6.2"></script>
+  <script src="dates.js?v=3.8.0"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     
@@ -273,6 +273,12 @@
     .date-line:first-of-type { border-top: none; }
     .date-line button { min-height: 44px; padding: 0 14px; border: 1px solid #b23b3b; border-radius: 6px; background: #fff; color: #b23b3b; font-weight: 600; cursor: pointer; }
     .date-line button:disabled { opacity: 0.5; }
+    /* The product's dates at every location: one folded line, look only (PRD-006; Randy, 2026-11-23) */
+    .place-dates { margin-top: 12px; padding: 0 12px; border-radius: 8px; background: #f1f1f1; }
+    .place-dates-group { padding: 2px 0 10px; border-top: 1px solid #ddd; }
+    .place-dates-name { display: inline-flex; align-items: center; min-height: 44px; font-weight: 600; }
+    a.place-dates-name { color: #4472C4; }
+    .place-dates-date { padding: 2px 0; }
     .date-settings label { margin-top: 10px; }
     /* Folds: anything not core to the page opens and closes, with a chevron that turns (Randy, 2026-11-19) */
     .fold > summary { list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 44px; font-weight: 600; cursor: pointer; }
@@ -366,7 +372,7 @@
 <body>
   <div class="container">
     <a class="breadcrumb" href="/">← Operator Tools</a>
-    <h1>📦 Basement Inventory v3.7.0</h1>
+    <h1>📦 Basement Inventory v3.8.0</h1>
 
     <!-- Session-level messages (start/end session, camera errors) -->
     <div id="message" class="message hidden"></div>
@@ -453,6 +459,9 @@
         <div id="datesGroup" class="dates-group">
           <!-- PRD-006: the basement's dates on file, each with Remove -->
           <div id="datesOnFile" class="dates-on-file hidden"></div>
+
+          <!-- This product's dates at every location: look only, marking is on Location Dates -->
+          <details id="placeDates" class="fold place-dates hidden"><summary></summary><div id="placeDatesBody"></div></details>
 
           <!-- PRD-006: the date offer, shown after an IN of a tracked product, or from Add a date. One save sends every date on the form. -->
           <div id="dateOffer" class="date-offer hidden">
@@ -820,6 +829,7 @@
           locations = res.body.locations || [];
           locationsLoaded = true;
           machines = res.body.machines && typeof res.body.machines === 'object' ? res.body.machines : {};
+          renderPlaceDates();   // names for the machines
           var outSelect = document.getElementById('outLocation');
           outSelect.disabled = false;
           outSelect.innerHTML = '<option value="">Select location...</option>';
@@ -951,6 +961,8 @@
       renderRetiredState(product);
       hideDateOffer();
       renderDates(product);
+      document.getElementById('placeDates').__upc = null;   // a product opened fresh starts folded
+      renderPlaceDates();
       outTicksUpc = null;   // a product opened fresh starts with its oldest date ticked
       renderOutDates();
       document.getElementById('backToListBtn').classList.toggle('hidden', !detailView);
@@ -1451,6 +1463,41 @@
     // machines: the location list's name to machine name, for an OUT that carries its dates (ADR-021).
     var datePlace = BASEMENT, datePlaceName = 'Basement', machines = {};
     function atLocation() { return false; }
+    function onDatesRefreshed() { renderOutDates(); renderPlaceDates(); }
+
+    // Every location's dates on file for the open product, on one folded line (Randy, 2026-11-23). A date on file means nobody
+    // has marked it found, not that stock is still there, so there is nothing to tap here but the location's name.
+    function placeName(machine) {
+      for (var n in machines) if (machines[n] === machine) return n;
+      return null;
+    }
+    function renderPlaceDates() {
+      var el = document.getElementById('placeDates'), product = currentProduct;
+      var dates = product && product.openDates ? product.openDates.filter(function(d) { return d.place !== BASEMENT; })
+        .sort(function(a, b) { return a.expiry_date < b.expiry_date ? -1 : a.expiry_date > b.expiry_date ? 1 : a.id - b.id; }) : [];
+      el.classList.toggle('hidden', !dates.length);
+      if (!dates.length) { el.open = false; return; }
+      if (el.__upc !== product.upc) el.open = false;
+      el.__upc = product.upc;
+      var today = todayIso(), past = function(d) { return d.expiry_date < today ? ' · Expired' : ''; };
+      el.querySelector('summary').textContent = 'At locations: ' + (dates.length === 1 ? '1 date, ' : dates.length + ' dates, soonest ') + showDate(dates[0].expiry_date) + past(dates[0]);
+      var names = [], byMachine = {};
+      dates.forEach(function(d) {
+        if (!byMachine[d.place]) {
+          var seen = placeName(d.place);
+          byMachine[d.place] = { machine: d.place, name: seen || d.place, active: seen !== null, dates: [] };
+          names.push(byMachine[d.place]);
+        }
+        byMachine[d.place].dates.push(d);
+      });
+      names.sort(function(a, b) { return a.name.localeCompare(b.name); });
+      document.getElementById('placeDatesBody').innerHTML = names.map(function(g) {
+        return '<div class="place-dates-group">' +
+          (g.active ? '<a class="place-dates-name" href="' + 'location-dates.html?place=' + encodeURIComponent(g.machine) + '">' + escapeHtml(g.name) + '</a>'
+                    : '<span class="place-dates-name">' + escapeHtml(g.name) + '</span>') +
+          g.dates.map(function(d) { return '<div class="place-dates-date">' + escapeHtml(showDate(d.expiry_date) + past(d)) + '</div>'; }).join('') + '</div>';
+      }).join('');
+    }
 
     function showBanner(text, type, actions) {
       var el = document.getElementById('banner');

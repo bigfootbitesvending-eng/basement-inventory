@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Location Dates v1.0.1</title>
+  <title>Location Dates v1.1.0</title>
   <!-- BUG-059: the pinned file's hash, so a changed file from the CDN is refused -->
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" integrity="sha384-c9d8RFSL+u3exBOJ4Yp3HUJXS4znl9f+z66d1y54ig+ea249SpqR+w1wyvXz/lk+" crossorigin="anonymous"></script>
   <!-- The date form, photo dates and dates on file, shared with Basement Inventory (PRD-006 item 4) -->
-  <script src="dates.js?v=3.6.2"></script>
+  <script src="dates.js?v=3.8.0"></script>
   <style>
     /* Location Dates (PRD-006 item 4, step 1): dating stock on a location's shelf, on its own page (Randy, 2026-11-21:
        "Why am I seeing the basement inventory screen?"). The date styles match Basement Inventory's. */
@@ -75,6 +75,13 @@
     .date-line button { min-height: 44px; padding: 0 14px; border: 1px solid #b23b3b; border-radius: 6px; background: #fff; color: #b23b3b; font-weight: 600; cursor: pointer; }
     .date-line button:disabled { opacity: 0.5; }
     .date-line .found-btns { display: flex; gap: 6px; flex-shrink: 0; }
+    /* The chosen location's dates on file (Randy, 2026-11-23): a row opens its product */
+    .place-dates-title { font-weight: 600; margin-bottom: 6px; }
+    .list-row { display: flex; width: 100%; min-height: 44px; flex-direction: column; justify-content: center; gap: 2px; padding: 8px 0; border: none; border-top: 1px solid #e3e3e3; background: none; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+    .list-row:first-child { border-top: none; }
+    .list-row:focus-visible { outline: 2px solid #4472C4; outline-offset: -2px; }
+    .list-date { font-size: 0.9rem; color: #555; }
+    .list-name { font-weight: 600; }
     .date-line button.none-there { border-color: #6b7280; color: #374151; }
     .date-settings label { margin-top: 10px; }
     .fold > summary { list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 44px; font-weight: 600; cursor: pointer; }
@@ -116,7 +123,7 @@
 <body>
   <div class="container">
     <a class="breadcrumb" href="/">← Operator Tools</a>
-    <h1>📍 Location Dates v1.0.1</h1>
+    <h1>📍 Location Dates v1.1.0</h1>
 
     <div id="message" class="message hidden"></div>
     <div id="banner" class="message hidden" role="status"></div>
@@ -181,6 +188,12 @@
           <button type="button" class="btn btn-secondary" id="dateSettingsBtn" onclick="saveDateSettings()" style="margin-top:10px;">Save date settings</button>
         </div>
       </details>
+    </div>
+
+    <!-- The chosen location's dates on file, soonest first; a tap opens the product above -->
+    <div id="placeDates" class="card hidden">
+      <div class="place-dates-title" id="placeDatesTitle"></div>
+      <div id="placeDatesBody"></div>
     </div>
   </div>
 
@@ -272,13 +285,13 @@
     function choosePlace(value, restoring) {
       var sel = document.getElementById('datePlace');
       var opt = Array.prototype.filter.call(sel.options, function(o) { return o.value === value && value !== ''; })[0];
-      if (!opt) { sel.value = ''; datePlace = ''; datePlaceName = ''; showPlaceNote('Choose the location whose shelf you\'re dating.'); refreshPanel(); return false; }
+      if (!opt) { sel.value = ''; datePlace = ''; datePlaceName = ''; showPlaceNote('Choose the location whose shelf you\'re dating.'); refreshPanel(); loadPlaceDates(); return false; }
       var changed = opt.value !== datePlace;
       sel.value = opt.value; datePlace = opt.value; datePlaceName = opt.textContent;
       if (!restoring) { try { localStorage.setItem(PLACE_KEY, JSON.stringify({ place: datePlace, day: todayIso() })); } catch (e) {} }
       showPlaceNote('Dates you save here go on ' + datePlaceName + '\'s shelf.');
       document.getElementById('dateOfferTitle').textContent = 'Date on the package at ' + datePlaceName;
-      if (changed) refreshPanel();
+      if (changed) { refreshPanel(); loadPlaceDates(); }
       return true;
     }
     // A product already open follows the location: its form closes (a photo read on it is answered) and its dates redraw.
@@ -288,6 +301,59 @@
       if (!datePlace) { document.getElementById('productPanel').classList.add('hidden'); currentProduct = null; return; }
       renderDates(currentProduct);
       if (isTracked(currentProduct)) openDateForm();
+    }
+
+    // ---- The location's dates on file. One read when the location is chosen; a save or mark here updates the list by itself.
+    var placeList = [];
+    function byDateThenName(a, b) {
+      return a.expiry_date < b.expiry_date ? -1 : a.expiry_date > b.expiry_date ? 1 : a.product_name < b.product_name ? -1 : a.product_name > b.product_name ? 1 : a.id - b.id;
+    }
+    function loadPlaceDates() {
+      var card = document.getElementById('placeDates'), asked = datePlace, name = datePlaceName;
+      placeList = null;
+      if (!datePlace) { card.classList.add('hidden'); return; }
+      document.getElementById('placeDatesTitle').textContent = 'Dates on file at ' + name;
+      document.getElementById('placeDatesBody').innerHTML = '<p class="place-note"><span class="spin" aria-hidden="true"></span>Loading dates…</p>';
+      card.classList.remove('hidden');
+      apiGetJson('/location-dates/read', { place: asked }).then(function(res) {
+        if (asked !== datePlace) return;   // the location changed while it loaded
+        var b = res.body || {};
+        if (!res.ok || b.ok !== true || !Array.isArray(b.dates)) throw new Error(b.error || ('status ' + res.status));
+        showPlaceList(b.dates);
+      }).catch(function(err) {
+        if (asked !== datePlace) return;
+        showPlaceList(null, err.message);
+      });
+    }
+    // rows null: the read failed, so nothing is known; never shown as an empty list.
+    function showPlaceList(rows, why) {
+      placeList = rows;
+      var title = document.getElementById('placeDatesTitle'), body = document.getElementById('placeDatesBody');
+      title.textContent = 'Dates on file at ' + datePlaceName + (rows && rows.length ? ' (' + rows.length + ')' : '');
+      if (!rows) {
+        body.innerHTML = '<p class="place-note warn">Couldn\'t load the dates at ' + escapeHtml(datePlaceName) + '. ' + escapeHtml(why || '') + '</p><button type="button" class="btn btn-secondary" onclick="loadPlaceDates()">Try again</button>';
+        return;
+      }
+      if (!rows.length) { body.innerHTML = '<p class="place-note">No dates on file at ' + escapeHtml(datePlaceName) + '.</p>'; return; }
+      var today = todayIso();
+      body.innerHTML = rows.map(function(d) {
+        return '<button type="button" class="list-row" data-upc="' + escapeHtml(d.upc) + '"><span class="list-date">' + escapeHtml(showDate(d.expiry_date)) +
+          (d.expiry_date < today ? ' · <b>Expired</b>' : '') + '</span><span class="list-name">' + escapeHtml(d.product_name) + '</span></button>';
+      }).join('');
+      Array.prototype.forEach.call(body.querySelectorAll('.list-row'), function(b) {
+        b.onclick = function() { openFromList(b.getAttribute('data-upc')); };
+      });
+    }
+    function openFromList(upc) { lookupUpc(upc); window.scrollTo(0, 0); }
+    // After a save or a mark, dates.js has the product's dates from the server: put them in the list, with no second read.
+    function onDatesRefreshed(product) {
+      if (!placeList || !datePlace) return;   // still loading, or it failed
+      var mine = product.noDateNeeded ? [] : product.openDates.filter(function(d) { return d.place === datePlace; }).map(function(d) {
+        return { id: d.id, upc: product.upc, product_name: product.name, expiry_date: d.expiry_date };
+      });
+      placeList = placeList.filter(function(d) { return d.upc !== product.upc; }).concat(mine);
+      placeList.sort(byDateThenName);
+      showPlaceList(placeList);
     }
 
     // ---- Scan
