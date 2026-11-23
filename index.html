@@ -3,7 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Basement Inventory v3.6.2</title>
+  <title>Basement Inventory v3.7.0</title>
+  <!-- Location dating moved to Location Dates (PRD-006). Restock emails already sent link here as ?place=<machine>, so the
+       forward stays for good. It runs before anything else loads, and replaces this page so Back does not come here. -->
+  <script>
+    (function() {
+      var place = (new URLSearchParams(window.location.search).get('place') || '').trim();
+      if (place) window.location.replace('location-dates.html?place=' + encodeURIComponent(place));
+    })();
+  </script>
   <!-- BUG-059: the pinned file's hash, so a changed file from the CDN is refused (same hash on unpkg and jsDelivr, 2026-11-21) -->
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" integrity="sha384-c9d8RFSL+u3exBOJ4Yp3HUJXS4znl9f+z66d1y54ig+ea249SpqR+w1wyvXz/lk+" crossorigin="anonymous"></script>
   <script src="session.js"></script>
@@ -265,18 +273,6 @@
     .date-line:first-of-type { border-top: none; }
     .date-line button { min-height: 44px; padding: 0 14px; border: 1px solid #b23b3b; border-radius: 6px; background: #fff; color: #b23b3b; font-weight: 600; cursor: pointer; }
     .date-line button:disabled { opacity: 0.5; }
-    /* PRD-006: dating at a location. Counts are the basement's, so the count controls hide there. */
-    body.at-location .count-only { display: none !important; }
-    .place-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-    .place-row label { margin: 0; font-size: 0.9rem; color: #555; white-space: nowrap; }
-    .place-row select { flex: 1; min-width: 0; min-height: 44px; margin: 0; font-size: 16px; }
-    .place-bar { display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin-bottom: 15px; border-radius: 8px; background: #fff4d6; color: #5a4300; border-left: 6px solid #e0a100; }
-    .place-bar-text { flex: 1; min-width: 0; }
-    .place-bar-text strong { display: block; font-size: 1.05rem; }
-    .place-bar-text span { font-size: 0.85rem; }
-    .place-bar button { flex-shrink: 0; min-height: 44px; padding: 0 12px; border: 1px solid #5a4300; border-radius: 6px; background: #fff; color: #5a4300; font-weight: 600; cursor: pointer; }
-    .date-line .found-btns { display: flex; gap: 6px; flex-shrink: 0; }
-    .date-line button.none-there { border-color: #6b7280; color: #374151; }
     .date-settings label { margin-top: 10px; }
     /* Folds: anything not core to the page opens and closes, with a chevron that turns (Randy, 2026-11-19) */
     .fold > summary { list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 44px; font-weight: 600; cursor: pointer; }
@@ -370,7 +366,7 @@
 <body>
   <div class="container">
     <a class="breadcrumb" href="/">← Operator Tools</a>
-    <h1>📦 Basement Inventory v3.6.2</h1>
+    <h1>📦 Basement Inventory v3.7.0</h1>
 
     <!-- Session-level messages (start/end session, camera errors) -->
     <div id="message" class="message hidden"></div>
@@ -379,13 +375,7 @@
     <div id="banner" class="message hidden" role="status"></div>
 
     <!-- Session Panel — always visible, above tabs -->
-    <!-- PRD-006: dating at a location. The bar says where dates go; a checkout session is a basement job, so it hides here. -->
-    <div id="datePlaceNote" class="place-bar hidden">
-      <div class="place-bar-text"><strong id="placeBarTitle"></strong><span>Dates you save go there. Basement counts are hidden.</span></div>
-      <button type="button" onclick="setDatePlace(BASEMENT)">Back to Basement</button>
-    </div>
-
-    <div id="sessionPanel" class="count-only"></div>
+    <div id="sessionPanel"></div>
 
     <div class="tabs">
       <button class="tab active" onclick="showTab('scan')">Scan</button>
@@ -396,11 +386,6 @@
     <div id="scanTab">
 
       <div class="card">
-        <!-- PRD-006: where dates are saved. Basement is receiving and counts; a location is dating stock on its shelf. -->
-        <div class="place-row">
-          <label for="datePlace">Dates go to</label>
-          <select id="datePlace" onchange="setDatePlace(this.value)"><option value="Basement">Basement</option></select>
-        </div>
         <div class="scanner-container">
           <div id="reader"></div>
         </div>
@@ -431,25 +416,25 @@
           <div class="product-upc" id="productUpc">-</div>
           <div class="product-category" id="productCategory">-</div>
           <!-- Fix the count sits on the same line as the count it fixes (Randy, 2026-11-19) -->
-          <div class="product-qty"><span>Current: <span id="productQty">0</span></span><button type="button" class="link-btn count-only" onclick="showSetQty()" id="setQtyBtn">Fix the count</button></div>
+          <div class="product-qty"><span>Current: <span id="productQty">0</span></span><button type="button" class="link-btn" onclick="showSetQty()" id="setQtyBtn">Fix the count</button></div>
           <div id="productRetired" class="retired-note hidden"></div>
         </div>
 
-        <div id="setQtySection" class="location-section hidden count-only" style="background:#e8f4e8;">
+        <div id="setQtySection" class="location-section hidden" style="background:#e8f4e8;">
           <label>Set quantity to:</label>
           <input type="number" id="setQtyInput" min="0" value="0">
           <button class="btn btn-in" onclick="confirmSetQty()" style="margin-top:10px;">Confirm</button>
         </div>
 
-        <label class="count-only">Quantity to add/remove:</label>
-        <div class="qty-buttons count-only">
+        <label>Quantity to add/remove:</label>
+        <div class="qty-buttons">
           <button class="qty-btn" onclick="adjustQty(-1)">−</button>
           <div class="qty-display" id="qtyDisplay">1</div>
           <button class="qty-btn" onclick="adjustQty(1)">+</button>
         </div>
 
         <!-- Location picker: only shown for OUT when no session is active -->
-        <div id="locationSection" class="location-section hidden count-only">
+        <div id="locationSection" class="location-section hidden">
           <label>Location (for OUT):</label>
           <select id="outLocation" onchange="renderOutDates()" disabled>
             <option value="">Loading locations…</option>
@@ -457,16 +442,16 @@
         </div>
 
         <!-- PRD-006: basement dates that leave with an OUT to a location (carried there) or to Expired (ended) -->
-        <div id="outDates" class="out-dates hidden count-only"></div>
+        <div id="outDates" class="out-dates hidden"></div>
 
-        <div class="action-buttons count-only">
+        <div class="action-buttons">
           <button class="btn btn-in" onclick="processIn()">IN</button>
           <button class="btn btn-out" onclick="showLocationAndProcessOut()">OUT</button>
         </div>
 
         <!-- The dates: what's on file, the form, and Add a date, together and always open -->
         <div id="datesGroup" class="dates-group">
-          <!-- PRD-006: the chosen place's dates on file; a basement date is removed, a location date is marked found -->
+          <!-- PRD-006: the basement's dates on file, each with Remove -->
           <div id="datesOnFile" class="dates-on-file hidden"></div>
 
           <!-- PRD-006: the date offer, shown after an IN of a tracked product, or from Add a date. One save sends every date on the form. -->
@@ -835,7 +820,6 @@
           locations = res.body.locations || [];
           locationsLoaded = true;
           machines = res.body.machines && typeof res.body.machines === 'object' ? res.body.machines : {};
-          fillDatePlaces();
           var outSelect = document.getElementById('outLocation');
           outSelect.disabled = false;
           outSelect.innerHTML = '<option value="">Select location...</option>';
@@ -969,7 +953,6 @@
       renderDates(product);
       outTicksUpc = null;   // a product opened fresh starts with its oldest date ticked
       renderOutDates();
-      if (atLocation() && isTracked(product)) openDateForm();   // dating is the only thing to do at a location
       document.getElementById('backToListBtn').classList.toggle('hidden', !detailView);
       document.getElementById('productPanel').classList.remove('hidden');
       document.getElementById('newProductPanel').classList.add('hidden');
@@ -1463,47 +1446,11 @@
 
     // ============================================
     // DATES (PRD-006): the date form, photo dates and dates on file are in dates.js, shared with Location Dates.
-    // What stays here is Basement Inventory's place picker ("Dates go to"), which moves to Location Dates in step 1.
     // ============================================
-    // Where dates are saved: 'Basement' or a location's machine name (ADR-021: dated_stock.place holds machine names),
-    // and the name the person sees. Remembered for the rest of the day, so a reload at a location stays there.
+    // What dates.js needs from the page: here dates always go to the basement; a location's shelf is dated on Location Dates.
+    // machines: the location list's name to machine name, for an OUT that carries its dates (ADR-021).
     var datePlace = BASEMENT, datePlaceName = 'Basement', machines = {};
-    var PLACE_KEY = 'bb.datePlace';
-    function atLocation() { return datePlace !== BASEMENT; }
-    function fillDatePlaces() {
-      var sel = document.getElementById('datePlace');
-      var names = getRealLocations().filter(function(n) { return typeof machines[n] === 'string' && machines[n]; })
-        .sort(function(a, b) { return a.localeCompare(b); });
-      sel.innerHTML = '<option value="' + BASEMENT + '">Basement</option>' + names.map(function(n) {
-        return '<option value="' + escapeHtml(machines[n]) + '">' + escapeHtml(n) + '</option>';
-      }).join('');
-      // A "Mark what you found" link from the restock email names the machine (?place=): it wins once, and is kept for the day.
-      var linked = placeLinkUsed ? null : new URLSearchParams(window.location.search).get('place');
-      placeLinkUsed = true;
-      if (linked) { setDatePlace(linked); return; }   // an unknown place falls back to Basement
-      var saved = null;
-      try { saved = JSON.parse(localStorage.getItem(PLACE_KEY) || 'null'); } catch (e) { saved = null; }
-      setDatePlace(saved && saved.day === todayIso() ? saved.place : datePlace, true);
-    }
-    var placeLinkUsed = false;
-    function setDatePlace(value, restoring) {
-      var sel = document.getElementById('datePlace');
-      var opt = Array.prototype.filter.call(sel.options, function(o) { return o.value === value; })[0] || sel.options[0];
-      sel.value = opt.value;
-      var changed = opt.value !== datePlace;
-      datePlace = opt.value; datePlaceName = opt.textContent;
-      if (!restoring) { try { localStorage.setItem(PLACE_KEY, JSON.stringify({ place: datePlace, day: todayIso() })); } catch (e) {} }
-      document.body.classList.toggle('at-location', atLocation());
-      document.getElementById('placeBarTitle').textContent = atLocation() ? '📍 Dating the shelf at ' + datePlaceName : '';
-      document.getElementById('datePlaceNote').classList.toggle('hidden', !atLocation());
-      document.getElementById('dateOfferTitle').textContent = 'Date on the package' + (atLocation() ? ' at ' + datePlaceName : '');
-      if (changed && currentProduct && currentProduct.openDates) {
-        // A form opened for the other place closes; a photo read on it is answered so it still reaches the review.
-        if (!document.getElementById('dateOffer').classList.contains('hidden')) { answerUnsavedReads(); hideDateOffer(); }
-        renderDates(currentProduct);
-        if (atLocation() && isTracked(currentProduct)) openDateForm();
-      }
-    }
+    function atLocation() { return false; }
 
     function showBanner(text, type, actions) {
       var el = document.getElementById('banner');
