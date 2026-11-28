@@ -61,6 +61,22 @@
   .hist { font-size: 0.82rem; color: var(--ink-soft); margin: 0.5rem 0 0.6rem; line-height: 1.5; }
   .hist b { color: var(--ink); }
   .empty { color: var(--ink-soft); padding: 1.25rem 0; text-align: center; }
+  /* Bought (PRD-008 Behavior 8): one button per card opens a panel to pick the store and the packs. */
+  .bline { margin: 0.35rem 0 0.1rem; }
+  .bbtn { font: inherit; font-size: 0.85rem; font-weight: 600; color: var(--ledger-green); background: #fff; border: 1px solid var(--ledger-green); border-radius: 999px; min-height: 44px; padding: 0 0.9rem; cursor: pointer; }
+  .bpanel { border: 1px solid var(--ledger-green); background: var(--ledger-green-soft); border-radius: 6px; padding: 0.6rem 0.7rem; margin: 0.5rem 0 0.25rem; font-size: 0.9rem; }
+  .bpanel .bwhat { margin-bottom: 0.4rem; }
+  .bpanel label.bopt { display: flex; gap: 0.5rem; align-items: center; min-height: 44px; border-bottom: 1px solid var(--rule); cursor: pointer; }
+  .bpanel label.bopt:last-of-type { border-bottom: none; }
+  .bpanel label.bopt input { width: 1.2rem; height: 1.2rem; flex: 0 0 auto; accent-color: var(--ledger-green); }
+  .bpacks { display: flex; align-items: center; gap: 0.5rem; margin: 0.4rem 0; }
+  .bpacks button { font: inherit; font-size: 1.2rem; width: 44px; height: 44px; border: 1px solid var(--rule); background: #fff; border-radius: 6px; cursor: pointer; }
+  .bpacks .bn { min-width: 2ch; text-align: center; font-weight: 700; font-size: 1.05rem; }
+  .bacts { display: flex; gap: 0.5rem; margin-top: 0.4rem; }
+  .bacts button { font: inherit; font-weight: 600; min-height: 44px; padding: 0 1.1rem; border-radius: 6px; cursor: pointer; }
+  .bacts button:disabled { opacity: 0.55; cursor: default; }
+  .bsave { background: var(--ledger-green); color: #fff; border: 1px solid var(--ledger-green); }
+  .bcancel { background: #fff; color: var(--ink); border: 1px solid var(--rule); }
 </style>
 </head>
 <body>
@@ -81,10 +97,13 @@
 (function () {
   // config.js declares API_KEY. Results come from CARTA - Read Results, which calls CARTA - Build Results.
   var RESULTS_API = 'https://randysmith42.app.n8n.cloud/webhook/carta/results';
+  // Bought saves through CARTA - Record Purchase (PRD-008), which takes the prices from the price check, never from the page.
+  var PURCHASE_API = 'https://randysmith42.app.n8n.cloud/webhook/carta/purchase';
   var root = document.getElementById('content');
   // closed: the stores and categories collapsed on this visit only. A reload opens them all again, so a collapsed
   // store can't hide next week's deal (E-68).
-  var state = { items: null, find: '', closed: {} };
+  // open: the card whose Bought panel is open { upc, list_id, packs, key }; busy: a save or Undo is on its way; undo: the last save.
+  var state = { items: null, find: '', closed: {}, open: null, busy: false, undo: null };
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; });
@@ -219,6 +238,42 @@
     return '<details class="more"><summary>All stores, history</summary><table class="t"><tr><th>Store</th><th>Pack</th><th>Each</th><th>Get it</th></tr>' +
       (p.rows || []).map(function (l) { return rowCells(p, l); }).join('') + '</table>' + history(p) + '</details>';
   }
+  // ---- Bought (PRD-008 Behavior 8 and 9) ----
+  // One button per card. It opens a panel listing every store with a price this run, the card's store picked, then packs and Save.
+  // The price paid is the price check's price for that store (Randy, 2026-11-27); the saving shown is against the usual store.
+  function priced(p) { return (p.rows || []).filter(function (r) { return r.state === 'checked' && Number(r.pack_price) > 0; }); }
+  function rowById(p, id) { return (p.rows || []).filter(function (r) { return r.list_id === id; })[0]; }
+  function newKey() {
+    try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID(); } catch { /* fall back below */ }
+    return 'k' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12);
+  }
+  function boughtLine(p) {
+    if (!p.lowest || !priced(p).length) return '';
+    return '<div class="bline"><button type="button" class="bbtn" data-upc="' + esc(p.upc) + '">Bought</button></div>';
+  }
+  function boughtSaving(p, l, packs) {
+    var u = p.usual || {};
+    if (l.store === p.usual_store) return 'Your usual store: no saving to count.';
+    if (u.state !== 'checked' || !(Number(u.unit_price) > 0)) return 'No ' + esc(p.usual_store || 'usual store') + ' price this run, so no saving is kept.';
+    var s = Math.round((Number(u.unit_price) - Number(l.unit_price)) * l.units * packs * 100) / 100;
+    return (s >= 0 ? 'Saves ' + money(s) : 'Costs ' + money(-s) + ' more') + ' vs ' + esc(p.usual_store) + ' (' + money(u.unit_price) + ' each).';
+  }
+  function boughtPanel(p) {
+    var o = state.open, l = rowById(p, o.list_id);
+    var h = '<div class="bpanel" role="group" aria-label="Record what you bought"><div class="bwhat"><b>Where did you buy it?</b></div>' +
+      priced(p).map(function (r) {
+        return '<label class="bopt"><input type="radio" name="bst-' + esc(p.upc) + '" data-list="' + r.list_id + '"' + (r.list_id === o.list_id ? ' checked' : '') +
+          (state.busy ? ' disabled' : '') + '> <span><b>' + esc(r.store) + '</b> ' + money(r.unit_price) + ' each <span class="sub">· ' + esc(pack(r)) + ' at ' +
+          money(r.pack_price) + (ways(r.availability) === 'ships only' ? ' · ships' : '') + '</span></span></label>';
+      }).join('');
+    h += '<div class="bpacks"><span>Packs</span><button type="button" class="bminus" aria-label="One fewer pack"' + (o.packs <= 1 || state.busy ? ' disabled' : '') + '>&minus;</button>' +
+      '<span class="bn" aria-live="polite">' + o.packs + '</span><button type="button" class="bplus" aria-label="One more pack"' + (o.packs >= 99 || state.busy ? ' disabled' : '') + '>+</button></div>';
+    h += '<div class="sub">' + money(Number(l.pack_price) * o.packs) + ' at the price check&rsquo;s price. ' + boughtSaving(p, l, o.packs) + '</div>';
+    return h + '<div class="bacts"><button type="button" class="bsave"' + (state.busy ? ' disabled' : '') + '>Save</button>' +
+      '<button type="button" class="bcancel"' + (state.busy ? ' disabled' : '') + '>Cancel</button></div></div>';
+  }
+  function boughtPart(p) { return state.open && state.open.upc === p.upc && rowById(p, state.open.list_id) ? boughtPanel(p) : boughtLine(p); }
+
   // One product under its lowest store: the price, what it saves, the pack and deal, and the way to get it without shipping
   // when the lowest needs it (E-66, E-67).
   function card(p) {
@@ -242,7 +297,7 @@
     }
     var u = usualLine(p);
     if (u) h += '<div class="sub">' + u + '</div>';
-    return h + detailsHtml(p) + '</section>';
+    return h + boughtPart(p) + detailsHtml(p) + '</section>';
   }
   function noPriceCard(p) {
     var u = usualLine(p);
@@ -343,6 +398,77 @@
     var pos = e.target.selectionStart;
     render();
     var el = document.getElementById('find'); if (el) { el.focus(); el.setSelectionRange(pos, pos); }
+  });
+
+  // ---- Bought: open, pick, save, Undo ----
+  function product(upc) { return (state.items || []).filter(function (i) { return i.kind === 'product' && i.upc === upc; })[0]; }
+  function packsText(n) { return n + (n === 1 ? ' pack' : ' packs'); }
+  function postPurchase(body) {
+    return fetch(PURCHASE_API, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY }, body: JSON.stringify(body) })
+      .then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (b) {
+          if (!r.ok) { var e = new Error(b.error || ('The server said HTTP ' + r.status + '.')); e.why = b.why || null; throw e; }
+          return b;
+        });
+      });
+  }
+  // Focus goes back where the tap was after a redraw, so a keyboard or screen reader doesn't land at the top of the page.
+  function focusIn(upc, sel) {
+    var c = Array.prototype.filter.call(root.querySelectorAll('section.card'), function (x) { return x.getAttribute('data-upc') === upc; })[0];
+    var el = c && c.querySelector(sel);
+    if (el) el.focus();
+  }
+  function saveBought() {
+    var o = state.open, p = product(o.upc), l = p && rowById(p, o.list_id);
+    if (!l || state.busy) return;
+    state.busy = true; state.undo = null;
+    BBMessages.show('working', 'Saving…');
+    render();
+    // The key is made when the panel opens, so a retry after a failed answer can't save twice (architecture decision 3).
+    postPurchase({ operation: 'add', client_key: o.key, list_id: o.list_id, packs: o.packs }).then(function (b) {
+      var text = packsText(o.packs) + ' of ' + p.name + ' at ' + l.store;
+      state.busy = false; state.open = null;
+      state.undo = { id: b.id, key: o.key, text: text };
+      render();
+      focusIn(p.upc, '.bbtn');
+      BBMessages.show('success', 'Bought ' + text + '.', { action: 'Undo', onHide: function () { state.undo = null; } });
+    }).catch(function (err) {
+      state.busy = false;
+      render();
+      BBMessages.show('error', /^Nothing saved/.test(err.message) ? err.message : 'Nothing saved. ' + err.message, { why: err.why || null });
+    });
+  }
+  root.addEventListener('click', function (e) {
+    var t = e.target.closest ? e.target.closest('button, input[type=radio]') : null;
+    if (!t || state.busy) return;
+    if (t.classList.contains('bbtn')) {
+      var p = product(t.getAttribute('data-upc'));
+      if (!p || !p.lowest) return;
+      state.open = { upc: p.upc, list_id: p.lowest.list_id, packs: 1, key: newKey() };
+      render();
+      focusIn(p.upc, '.bpanel input:checked');
+      return;
+    }
+    if (!state.open || !t.closest('.bpanel')) return;
+    var upc = state.open.upc;
+    if (t.type === 'radio') { state.open.list_id = Number(t.getAttribute('data-list')); render(); focusIn(upc, '.bpanel input:checked'); return; }
+    if (t.classList.contains('bplus')) { state.open.packs = Math.min(99, state.open.packs + 1); render(); focusIn(upc, '.bplus'); return; }
+    if (t.classList.contains('bminus')) { state.open.packs = Math.max(1, state.open.packs - 1); render(); focusIn(upc, state.open.packs > 1 ? '.bminus' : '.bplus'); return; }
+    if (t.classList.contains('bcancel')) { state.open = null; render(); focusIn(upc, '.bbtn'); return; }
+    if (t.classList.contains('bsave')) saveBought();
+  });
+  // Undo in the banner removes the row the last save made (Behavior 9).
+  document.addEventListener('click', function (e) {
+    if (!e.target || e.target.id !== 'bb-message-action' || !state.undo || state.busy) return;
+    var u = state.undo; state.undo = null; state.busy = true;
+    BBMessages.show('working', 'Removing…');
+    postPurchase({ operation: 'undo', client_key: u.key, id: u.id }).then(function () {
+      state.busy = false; render();
+      BBMessages.show('success', 'Removed: ' + u.text + '.');
+    }).catch(function (err) {
+      state.busy = false; render();
+      BBMessages.show('error', /^Not removed/.test(err.message) ? err.message : 'Not removed. ' + err.message, { why: err.why || null });
+    });
   });
 
   fetch(RESULTS_API, { headers: { 'X-API-Key': API_KEY } })
